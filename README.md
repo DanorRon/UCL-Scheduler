@@ -1,1 +1,1 @@
-An automated availability-basedrehearsal scheduler.
+An automated availability-based rehearsal scheduler.
