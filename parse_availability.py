@@ -7,6 +7,8 @@ from access_availability import availability_df
 num_days = 2
 num_shifts = 12
 
+missing_data_functionality = True #if true, will fill in missing data with "Available;" otherwise will fill in with "Not available"
+
 #convert the availability dataframe to a boolean array
 def to_bool_array(df):
     if len(df.shape) == 1:
@@ -17,7 +19,7 @@ def to_bool_array(df):
             elif df.iloc[i] == 'Not available':
                 result[i] = 0
             else:
-                result[i] = -1
+                result[i] = 1 if missing_data_functionality else 0
     else:
         result = np.empty((df.shape[0], df.shape[1]))
         for i in range(df.shape[0]):
@@ -27,7 +29,7 @@ def to_bool_array(df):
                 elif df.iloc[i][j] == 'Not available':
                     result[i][j] = 0
                 else:
-                    result[i][j] = -1
+                    result[i][j] = 1 if missing_data_functionality else 0
     return result
 
 availability_df = availability_df.drop('', axis=1) #drop empty columns
