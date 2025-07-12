@@ -10,8 +10,8 @@ import pandas as pd
 from ortools.sat.python import cp_model
 from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass
+import numpy as np
 
-from ..data_parsing.parse_availability import cast_members, cast_availability, leader_availability
 from ..solution_viewing.html_converter import convert_solutions_to_html
 from ..solution_viewing.terminal_viewer import view_schedule
 
@@ -29,13 +29,13 @@ class RehearsalRequest:
 class DataManager:
     """Manages cast member data and availability."""
     
-    def __init__(self):
+    def __init__(self, cast_members: List[str], cast_availability: np.ndarray, leader_availability: np.ndarray):
         self.cast_members = cast_members
         self.cast_availability = cast_availability
         self.leader_availability = leader_availability
         self.num_cast = len(cast_members)
-        self.num_shifts = 12
-        self.num_days = 2
+        self.num_days = cast_availability.shape[1]
+        self.num_shifts = cast_availability.shape[2]
         
     def member_to_index(self, member: str) -> int:
         """Convert cast member name to index."""
@@ -341,8 +341,8 @@ class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
 class RehearsalScheduler:
     """Main scheduler class that orchestrates the entire scheduling process."""
     
-    def __init__(self, num_days: int = 2, num_shifts: int = 12):
-        self.data_manager = DataManager()
+    def __init__(self, cast_members: List[str], cast_availability: np.ndarray, leader_availability: np.ndarray):
+        self.data_manager = DataManager(cast_members, cast_availability, leader_availability)
         self.request_processor = RequestProcessor()
         self.model = cp_model.CpModel()
         self.constraint_builder = ConstraintBuilder(self.model, self.data_manager)
@@ -492,6 +492,9 @@ class RehearsalScheduler:
 
 def main():
     """Main function to run the rehearsal scheduler."""
+    # Import availability data
+    from ..data_parsing.availability_manager import cast_members, cast_availability, leader_availability
+    
     # Define rehearsal requests
     rehearsal_requests = [
         RehearsalRequest(['Ollie', 'Sophia', 'Tumo'], 1),
@@ -501,8 +504,8 @@ def main():
         RehearsalRequest(['Mary', 'Sabine'], 1),
     ]
     
-    # Create and run scheduler
-    scheduler = RehearsalScheduler()
+    # Create and run scheduler with availability data
+    scheduler = RehearsalScheduler(cast_members, cast_availability, leader_availability)
     scheduler.build_model(rehearsal_requests)
     solutions = scheduler.solve(solution_limit=1)
     
