@@ -3,9 +3,16 @@
 import numpy as np
 import pandas as pd
 import gspread
+from gspread.auth import service_account
+import os
+from pathlib import Path
+
+# Get the credentials file path relative to the package
+package_dir = Path(__file__).parent.parent
+credentials_path = package_dir / "credentials" / "ucl-scheduler-866343adad65.json"
 
 # Create gspread client with service account credentials
-gc = gspread.service_account(filename='ucl-scheduler-866343adad65.json')
+gc = service_account(filename=credentials_path)
 
 # Open the spreadsheet by key
 spreadsheet = gc.open_by_key("1L18-4RtE4I8ku2kQcTl1HvfrzN0hZdSRFdrEI6XTJ4c")

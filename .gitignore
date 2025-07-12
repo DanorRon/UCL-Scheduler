@@ -189,6 +189,10 @@ tramp
 .AppleDouble
 .LSOverride
 
+# Credentials and sensitive files
+src/ucl_scheduler/credentials/
+*.json
+
 # Icon must end with two \r
 Icon
 

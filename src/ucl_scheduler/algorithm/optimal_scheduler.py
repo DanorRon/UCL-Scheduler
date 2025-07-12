@@ -5,7 +5,7 @@ Add features incrementally over time.
 
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-from constrained_scheduler import RehearsalScheduler, RehearsalRequest
+from .constrained_scheduler import RehearsalScheduler, RehearsalRequest
 
 from ..solution_viewing.terminal_viewer import view_schedule
 
