@@ -11,8 +11,9 @@ from ortools.sat.python import cp_model
 from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass
 
-from parse_availability import cast_members, cast_availability, leader_availability
-
+from ..data_parsing.parse_availability import cast_members, cast_availability, leader_availability
+from ..solution_viewing.html_converter import convert_solutions_to_html
+from ..solution_viewing.terminal_viewer import view_schedule
 
 @dataclass
 class RehearsalRequest:
@@ -260,6 +261,35 @@ class ConstraintBuilder:
                         self.model.add(member_scheduled <= sum(member_in_fulfilled_request))
                     else:
                         self.model.add(member_scheduled == 0)
+    
+    def add_same_group_different_days_constraints(self, multi_requests: Dict[Tuple, List[int]]):
+        """Add constraints to prevent multiple requests for the same group on the same day."""
+        # For groups with multiple requests, ensure they're on different days
+        for group, rehearsal_lengths in multi_requests.items():
+            if len(rehearsal_lengths) > 1:
+                # This group has multiple requests, so they must be on different days
+                day_fulfillment_vars = []
+                
+                # Collect all fulfillment variables for this group across all days
+                for d in self.data.get_all_days():
+                    day_fulfilled = []
+                    
+                    # Check multi-hour requests for this group
+                    for rehearsal_length in rehearsal_lengths:
+                        for s in range(self.data.num_shifts - rehearsal_length + 1):
+                            day_fulfilled.append(self.multi_request_fulfillment[(group, d, s, rehearsal_length)])
+                    
+                    # If any request for this group is fulfilled on this day, mark the day as used
+                    if day_fulfilled:
+                        day_fulfillment_vars.append(sum(day_fulfilled))
+                
+                # Ensure that the number of days used equals the number of requests
+                if day_fulfillment_vars:
+                    self.model.add(sum(day_fulfillment_vars) == len(rehearsal_lengths))
+                    
+                    # Ensure no more than one request per day for this group
+                    for day_vars in day_fulfillment_vars:
+                        self.model.add(day_vars <= 1)
 
 
 class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
@@ -319,6 +349,9 @@ class RehearsalScheduler:
         
     def build_model(self, requests: List[RehearsalRequest]):
         """Build the complete scheduling model with all constraints."""
+        # Store requests for later analysis
+        self._current_requests = requests
+        
         # Create variables
         self.constraint_builder.create_shift_variables()
         
@@ -333,6 +366,7 @@ class RehearsalScheduler:
         self.constraint_builder.add_multi_hour_constraints(multi_requests)
         self.constraint_builder.add_overlap_prevention_constraints(multi_requests)
         self.constraint_builder.add_scheduling_constraints(single_requests, multi_requests)
+        self.constraint_builder.add_same_group_different_days_constraints(multi_requests)
         
         return single_requests, multi_requests
     
@@ -352,7 +386,108 @@ class RehearsalScheduler:
         print(f"\nStatus: {solver.status_name(status)}")
         print(f"Number of solutions found: {solution_collector.solutionCount()}")
         
+        # If infeasible, identify which requests couldn't be scheduled
+        if status == cp_model.INFEASIBLE:
+            self._identify_infeasible_requests()
+        
         return solution_collector.get_solutions()
+    
+    def _identify_infeasible_requests(self):
+        """Identify which requests couldn't be scheduled when the problem is infeasible."""
+        print("\n🔍 ANALYZING INFEASIBLE REQUESTS:")
+        print("=" * 50)
+        
+        # Test each request individually
+        single_requests, multi_requests = self.request_processor.split_requests(self._current_requests)
+        
+        infeasible_requests = []
+        
+        # Test single-hour requests
+        for request in single_requests:
+            if not self._test_request_feasibility(request, 1):
+                infeasible_requests.append(f"Single-hour: {list(request)}")
+        
+        # Test multi-hour requests
+        for request, rehearsal_lengths in multi_requests.items():
+            for length in rehearsal_lengths:
+                if not self._test_request_feasibility(request, length):
+                    infeasible_requests.append(f"Multi-hour ({length}h): {list(request)}")
+        
+        if infeasible_requests:
+            print("❌ The following requests could not be scheduled:")
+            for req in infeasible_requests:
+                print(f"   • {req}")
+            print("\n💡 Possible reasons:")
+            print("   • Insufficient availability for all members")
+            print("   • No leader available during required times")
+            print("   • Requested duration exceeds available time slots")
+        else:
+            print("✅ All individual requests are feasible")
+            print("💡 The infeasibility is due to conflicts between requests")
+            #TODO: Add detailed conflict analysis to identify specific request conflicts
+    
+    def _test_request_feasibility(self, request: Tuple, duration: int) -> bool:
+        """Test if a single request can be scheduled."""
+        # Create a minimal model for this request
+        test_model = cp_model.CpModel()
+        
+        # Create shift variables for this request only
+        member_indices = [self.data_manager.member_to_index(member) for member in request]
+        shifts = {}
+        for n in member_indices:
+            for d in self.data_manager.get_all_days():
+                for s in self.data_manager.get_all_shifts():
+                    shifts[(n, d, s)] = test_model.new_bool_var(f"test_shift_n{n}_d{d}_s{s}")
+        
+        # Add availability constraints
+        for n in member_indices:
+            for d in self.data_manager.get_all_days():
+                for s in self.data_manager.get_all_shifts():
+                    # Cast member availability
+                    if self.data_manager.cast_availability[n][d][s] == 0:
+                        test_model.add(shifts[(n, d, s)] == 0)
+                    # Leader availability
+                    if self.data_manager.leader_availability[0][d][s] == 0:
+                        test_model.add(shifts[(n, d, s)] == 0)
+        
+        # Add request fulfillment constraint
+        if duration == 1:
+            # Single-hour request
+            fulfillment_vars = []
+            for d in self.data_manager.get_all_days():
+                for s in self.data_manager.get_all_shifts():
+                    fulfillment_vars.append(test_model.new_bool_var(f"fulfillment_d{d}_s{s}"))
+            
+            # Must be fulfilled exactly once
+            test_model.add(sum(fulfillment_vars) == 1)
+            
+            # Link fulfillment to scheduling
+            for d in self.data_manager.get_all_days():
+                for s in self.data_manager.get_all_shifts():
+                    for member_idx in member_indices:
+                        test_model.add(fulfillment_vars[d * self.data_manager.num_shifts + s] <= shifts[(member_idx, d, s)])
+        else:
+            # Multi-hour request
+            fulfillment_vars = []
+            for d in self.data_manager.get_all_days():
+                for s in range(self.data_manager.num_shifts - duration + 1):
+                    fulfillment_vars.append(test_model.new_bool_var(f"fulfillment_d{d}_s{s}"))
+            
+            # Must be fulfilled exactly once
+            test_model.add(sum(fulfillment_vars) == 1)
+            
+            # Link fulfillment to scheduling
+            for d in self.data_manager.get_all_days():
+                for s in range(self.data_manager.num_shifts - duration + 1):
+                    for hour in range(duration):
+                        for member_idx in member_indices:
+                            test_model.add(fulfillment_vars[d * (self.data_manager.num_shifts - duration + 1) + s] <= shifts[(member_idx, d, s + hour)])
+        
+        # Solve the test model
+        test_solver = cp_model.CpSolver()
+        status = test_solver.solve(test_model)
+        
+        return status == cp_model.OPTIMAL or status == cp_model.FEASIBLE
 
 
 def main():
@@ -373,8 +508,6 @@ def main():
     
     # Display results
     if solutions:
-        from html_converter import convert_solutions_to_html
-        from terminal_viewer import view_schedule
         
         print(f"\n{'-'*50}")
         print("📺 TERMINAL VIEW:")

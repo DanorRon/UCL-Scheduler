@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 # Import the database (availability DataFrame) from access_availability.py
-from access_availability import availability_df
+from .access_availability import availability_df
 
 num_days = 2
 num_shifts = 12
