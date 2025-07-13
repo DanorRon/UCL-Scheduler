@@ -11,11 +11,6 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.insert(0, str(src_path))
 
-# Debug: Print path information
-print(f"DEBUG: Current working directory: {os.getcwd()}")
-print(f"DEBUG: Added src_path to sys.path: {src_path}")
-print(f"DEBUG: src_path exists: {src_path.exists()}")
-
 # Import the Flask app
 import ucl_scheduler.web_interface.app as web_app
 app = web_app.app

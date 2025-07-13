@@ -31,25 +31,6 @@ app.route('/health', methods=['GET'])(health_check)
 def index():
     """Serve the main HTML interface."""
     static_dir = Path(__file__).parent
-    
-    # Debug: Print directory information
-    print(f"DEBUG: Current working directory: {os.getcwd()}")
-    print(f"DEBUG: Static directory: {static_dir}")
-    print(f"DEBUG: Static directory exists: {static_dir.exists()}")
-    print(f"DEBUG: Static directory absolute: {static_dir.absolute()}")
-    
-    # List all files in the directory
-    try:
-        files = list(static_dir.iterdir())
-        print(f"DEBUG: Files in static directory: {[f.name for f in files]}")
-    except Exception as e:
-        print(f"DEBUG: Error listing directory: {e}")
-    
-    # Check if index.html exists
-    index_path = static_dir / 'index.html'
-    print(f"DEBUG: Index.html path: {index_path}")
-    print(f"DEBUG: Index.html exists: {index_path.exists()}")
-    
     return send_from_directory(static_dir, 'index.html')
 
 @app.route('/<path:filename>')
