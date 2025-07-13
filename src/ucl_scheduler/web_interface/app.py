@@ -30,12 +30,14 @@ app.route('/health', methods=['GET'])(health_check)
 @app.route('/')
 def index():
     """Serve the main HTML interface."""
-    return send_from_directory('.', 'index.html')
+    static_dir = Path(__file__).parent
+    return send_from_directory(static_dir, 'index.html')
 
 @app.route('/<path:filename>')
 def serve_static(filename):
     """Serve static files."""
-    return send_from_directory('.', filename)
+    static_dir = Path(__file__).parent
+    return send_from_directory(static_dir, filename)
 
 if __name__ == '__main__':
     # Get port from environment variable (Railway sets this)
