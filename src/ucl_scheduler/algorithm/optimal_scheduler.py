@@ -204,41 +204,57 @@ class ScheduleOptimizer:
         """Find the best schedule from a list of solutions."""
         if not solutions:
             return [], 0.0
-        
-        best_solution = None
+
+        best_schedule = None
         best_score = -1.0
-        
+
         for solution in solutions:
             score = self.calculate_total_score(solution)
             if score > best_score:
                 best_score = score
-                best_solution = solution
-        
-        return [best_solution], best_score
+                best_schedule = solution
+
+        if best_schedule is None:
+            best_schedule = []
+        return best_schedule, best_score
 
 
 class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the constrained scheduler
     """Enhanced scheduler with optimization capabilities."""
     
-    def __init__(self, weights: OptimizationWeights, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences):
-        super().__init__()
+    def __init__(self, weights: OptimizationWeights, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences, cast_members, cast_availability, leader_availability):
+        # Validate that all required data is provided
+        if cast_members is None:
+            raise ValueError("cast_members is required but not provided")
+        if cast_availability is None:
+            raise ValueError("cast_availability is required but not provided")
+        if leader_availability is None:
+            raise ValueError("leader_availability is required but not provided")
+        
+        super().__init__(cast_members, cast_availability, leader_availability)
         self.optimizer = ScheduleOptimizer(weights, time_prefs, room_prefs, continuity_prefs)
     
     def solve_optimized(self, requests: List[RehearsalRequest], 
-                       num_solutions: int = 50) -> List:
-        """Find and return the best schedule."""
+                       num_solutions: int = 50) -> Tuple[List, float]:
+        """Find and return the best schedule and its score."""
+        # Build the model first
+        print("Building scheduling model...")
+        self.build_model(requests)
+        
         # Get multiple feasible solutions
+        print("Solving optimization problem...")
         solutions = self.solve(solution_limit=num_solutions)
         
         if not solutions:
-            return []
+            print("No feasible solutions found")
+            return [], 0.0
         
         # Find the best one
-        best_solutions, best_score = self.optimizer.find_best_schedule(solutions)
+        best_schedule, best_score = self.optimizer.find_best_schedule(solutions)
         
         print(f"Generated {len(solutions)} solutions")
         print(f"Best schedule score: {best_score:.2f}")
-        return best_solutions
+        return best_schedule, best_score
     
     def analyze_schedule(self, schedule) -> Dict:
         """Analyze a schedule and return factor scores."""
@@ -321,8 +337,12 @@ def main():
         weights = OptimizationWeights(time_preference=0.33, room_preference=0.33, continuity_preference=0.34)
         print("Selected: Balanced")
     
+    # Get availability data for the scheduler
+    from ucl_scheduler.data_parsing.availability_manager import get_parsed_availability, DEFAULT_SPREADSHEET_KEY
+    cast_members, leaders, cast_availability, leader_availability = get_parsed_availability(DEFAULT_SPREADSHEET_KEY)
+    
     # Create optimized scheduler
-    scheduler = OptimizedRehearsalScheduler(weights, time_prefs, room_prefs, continuity_prefs)
+    scheduler = OptimizedRehearsalScheduler(weights, time_prefs, room_prefs, continuity_prefs, cast_members, cast_availability, leader_availability)
     
     # Define rehearsal requests
     requests = [
@@ -336,10 +356,10 @@ def main():
     
     # Build model and solve
     scheduler.build_model(requests)
-    best_solutions = scheduler.solve_optimized(requests, num_solutions=50)
+    best_schedule, best_score = scheduler.solve_optimized(requests, num_solutions=50)
     
-    if best_solutions:
-        best_solution = best_solutions[0]
+    if best_schedule:
+        best_solution = best_schedule[0]
         analysis = scheduler.analyze_schedule(best_solution)
         
         print(f"\n=== OPTIMIZATION RESULTS ===")
@@ -350,7 +370,7 @@ def main():
         
         print(f"\n=== SCHEDULE ===")
         # Display the schedule
-        view_schedule(best_solutions)
+        view_schedule(best_schedule)
     else:
         print("No feasible solution found.")
 

@@ -30,6 +30,22 @@ class DataManager:
     """Manages cast member data and availability."""
     
     def __init__(self, cast_members: List[str], cast_availability: np.ndarray, leader_availability: np.ndarray):
+        # Validate input data
+        if not cast_members:
+            raise ValueError("cast_members list is empty")
+        if cast_availability.size == 0:
+            raise ValueError("cast_availability array is empty")
+        if leader_availability.size == 0:
+            raise ValueError("leader_availability array is empty")
+        
+        if len(cast_availability.shape) != 3:
+            raise ValueError(f"cast_availability should be 3D array, got shape {cast_availability.shape}")
+        if len(leader_availability.shape) != 3:
+            raise ValueError(f"leader_availability should be 3D array, got shape {leader_availability.shape}")
+        
+        if cast_availability.shape[0] != len(cast_members):
+            raise ValueError(f"cast_availability first dimension ({cast_availability.shape[0]}) doesn't match number of cast members ({len(cast_members)})")
+        
         self.cast_members = cast_members
         self.cast_availability = cast_availability
         self.leader_availability = leader_availability
@@ -493,7 +509,8 @@ class RehearsalScheduler:
 def main():
     """Main function to run the rehearsal scheduler."""
     # Import availability data
-    from ..data_parsing.availability_manager import cast_members, cast_availability, leader_availability
+    from ..data_parsing.availability_manager import get_parsed_availability, DEFAULT_SPREADSHEET_KEY
+    cast_members, leaders, cast_availability, leader_availability = get_parsed_availability(DEFAULT_SPREADSHEET_KEY)
     
     # Define rehearsal requests
     rehearsal_requests = [

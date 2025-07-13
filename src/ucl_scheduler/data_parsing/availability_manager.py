@@ -50,23 +50,39 @@ def get_availability_data(spreadsheet_key: str) -> pd.DataFrame:
         
     Returns:
         pandas DataFrame containing the availability data
+        
+    Raises:
+        FileNotFoundError: If credentials file is not found
+        Exception: If data cannot be retrieved from Google Sheets
     """
     # Get the credentials file path relative to the package
     package_dir = Path(__file__).parent.parent
     credentials_path = package_dir / "credentials" / "ucl-scheduler-866343adad65.json"
     
+    if not credentials_path.exists():
+        raise FileNotFoundError(f"Credentials file not found at {credentials_path}")
+    
     # Create gspread client with service account credentials
     gc = service_account(filename=credentials_path)
     
     # Open the spreadsheet by key
-    spreadsheet = gc.open_by_key(spreadsheet_key)
+    try:
+        spreadsheet = gc.open_by_key(spreadsheet_key)
+    except Exception as e:
+        raise Exception(f"Failed to open spreadsheet with key {spreadsheet_key}: {str(e)}")
     
     # Get worksheet data (assuming first worksheet)
-    worksheet = spreadsheet.get_worksheet(0)
-    data = worksheet.get_all_values()
+    try:
+        worksheet = spreadsheet.get_worksheet(0)
+        data = worksheet.get_all_values()
+    except Exception as e:
+        raise Exception(f"Failed to retrieve data from spreadsheet: {str(e)}")
     
     # Convert to pandas DataFrame
     availability_df = pd.DataFrame(data)
+    
+    if availability_df.empty:
+        raise Exception("No data retrieved from spreadsheet")
     
     return availability_df
 
@@ -96,7 +112,7 @@ def to_bool_array(df):
                     result[i][j] = 1 if missing_data_functionality else 0
     return result
 
-def parse_availability_data(availability_df: pd.DataFrame) -> Tuple[List[str], np.ndarray, np.ndarray]:
+def parse_availability_data(availability_df: pd.DataFrame) -> Tuple[List[str], List[str], np.ndarray, np.ndarray]:
     """
     Parse availability data from a Google Sheets DataFrame.
     
@@ -104,10 +120,14 @@ def parse_availability_data(availability_df: pd.DataFrame) -> Tuple[List[str], n
         availability_df: Raw DataFrame from Google Sheets
         
     Returns:
-        Tuple of (cast_members, cast_availability, leader_availability)
+        Tuple of (cast_members, leaders, cast_availability, leader_availability)
         - cast_members: List of all member names (including leaders)
+        - leaders: List of leader names only
         - cast_availability: Boolean array of shape (num_members, num_days, num_shifts)
         - leader_availability: Boolean array of shape (num_leaders, num_days, num_shifts)
+        
+    Raises:
+        ValueError: If the DataFrame structure is invalid or required sections are missing
     """
 
     #pd.set_option('display.max_rows', 100)
@@ -115,12 +135,35 @@ def parse_availability_data(availability_df: pd.DataFrame) -> Tuple[List[str], n
 
     # Note: We consider the leaders to be part of the cast, so we include them in the cast members list
 
+    # Validate DataFrame structure
+    if availability_df.empty:
+        raise ValueError("Availability DataFrame is empty")
+    
+    if availability_df.shape[1] < 1:
+        raise ValueError("Availability DataFrame has no columns")
+    
     # parse the names of the leaders and cast members
     names_column = availability_df.iloc[:, 0]
+    
+    # Check for required sections
+    if 'Production Team' not in names_column.values:
+        raise ValueError("Required 'Production Team' section not found in availability data")
+    
+    if 'Cast' not in names_column.values:
+        raise ValueError("Required 'Cast' section not found in availability data")
+    
     leader_index = names_column[names_column == 'Production Team'].index[0]
     cast_index = names_column[names_column == 'Cast'].index[0]
     leaders = names_column[leader_index + 1:cast_index]
     cast_members = names_column[cast_index + 1:]
+    
+    # Validate that we have data
+    if len(leaders) == 0:
+        raise ValueError("No leaders found in availability data")
+    
+    if len(cast_members) == 0:
+        raise ValueError("No cast members found in availability data")
+    
     cast_members = pd.concat([leaders, cast_members]).tolist() #include leaders in cast members, so this is really all members
     leaders = leaders.tolist()
     
@@ -153,12 +196,12 @@ def parse_availability_data(availability_df: pd.DataFrame) -> Tuple[List[str], n
     leader_availability = to_bool_array(availability_df.iloc[0 : num_leaders, :])
     leader_availability = np.reshape(leader_availability, (num_leaders, num_days, num_shifts))
     
-    return cast_members, cast_availability, leader_availability
+    return cast_members, leaders, cast_availability, leader_availability
 
 # Default spreadsheet key for backward compatibility
 DEFAULT_SPREADSHEET_KEY = "1gQgJI0Ar2K9pkKZkmZxzxPTR95355VsVShk5_aMvxIo"
 
-def get_parsed_availability(spreadsheet_key: Optional[str] = None) -> Tuple[List[str], np.ndarray, np.ndarray]:
+def get_parsed_availability(spreadsheet_key: Optional[str] = None) -> Tuple[List[str], List[str], np.ndarray, np.ndarray]:
     """
     Get and parse availability data from Google Sheets.
     
@@ -166,10 +209,14 @@ def get_parsed_availability(spreadsheet_key: Optional[str] = None) -> Tuple[List
         spreadsheet_key: The Google Sheets spreadsheet key. If None, uses default.
         
     Returns:
-        Tuple of (cast_members, cast_availability, leader_availability)
+        Tuple of (cast_members, leaders, cast_availability, leader_availability)
+        
+    Raises:
+        ValueError: If spreadsheet_key is not provided and no default is available
+        Exception: If data cannot be retrieved or parsed
     """
     if spreadsheet_key is None:
-        spreadsheet_key = DEFAULT_SPREADSHEET_KEY
+        raise ValueError("spreadsheet_key is required but not provided")
     
     # Get raw data from Google Sheets
     availability_df = get_availability_data(spreadsheet_key)
@@ -177,5 +224,4 @@ def get_parsed_availability(spreadsheet_key: Optional[str] = None) -> Tuple[List
     # Parse the data
     return parse_availability_data(availability_df)
 
-# Parse the availability data using the default DataFrame
-cast_members, cast_availability, leader_availability = get_parsed_availability()
+# Note: Data is now loaded on-demand when needed, not at module import time
