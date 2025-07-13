@@ -12,7 +12,7 @@ from pathlib import Path
 # Add the src directory to the path so we can import our scheduler
 # This works both locally and on Railway
 current_dir = Path(__file__).parent
-src_dir = current_dir.parent.parent  # Go up from web-interface to src
+src_dir = current_dir.parent.parent  # Go up from web_interface to src
 sys.path.insert(0, str(src_dir))
 
 # Create the main Flask app
