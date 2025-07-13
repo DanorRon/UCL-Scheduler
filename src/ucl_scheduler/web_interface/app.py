@@ -20,7 +20,7 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)  # Allow cross-origin requests
 
 # Import and register the API routes
-from .scheduler_api import generate_schedule, fetch_cast_members, health_check
+from scheduler_api import generate_schedule, fetch_cast_members, health_check
 
 # Register the routes
 app.route('/generate-schedule', methods=['POST'])(generate_schedule)
