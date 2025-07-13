@@ -1,7 +1,6 @@
 """
 UCL Scheduler Package
-
-An intelligent rehearsal scheduling system with optimization capabilities.
+An automated availability-based rehearsal scheduler.
 """
 
 __version__ = "1.0.0"
