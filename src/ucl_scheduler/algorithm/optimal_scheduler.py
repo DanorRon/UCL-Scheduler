@@ -13,8 +13,8 @@ from ..solution_viewing.terminal_viewer import view_schedule
 @dataclass
 class TimeOfDayPreferences:
     """Leader's preferences for time of day scheduling."""
-    morning_weight: float = 0.3    # 9:00-12:00 (shifts 0-3)
-    afternoon_weight: float = 0.4   # 12:00-17:00 (shifts 3-8) 
+    morning_weight: float = 0.0    # 9:00-12:00 (shifts 0-3)
+    afternoon_weight: float = 0.7   # 12:00-17:00 (shifts 3-8) 
     evening_weight: float = 0.3     # 17:00-21:00 (shifts 8-12)
     
     def normalize(self):
@@ -54,15 +54,15 @@ class RoomPreferences:
 @dataclass
 class ContinuityPreferences:
     """Preferences for rehearsal continuity (longer blocks, but with a limit)."""
-    max_block_length: int = 2  # Maximum preferred consecutive rehearsal slots
-    penalty_factor: float = 2.0  # How sharply to penalize blocks longer than max
+    max_block_length: int = 5  # Maximum preferred consecutive rehearsal slots
+    penalty_factor: float = 3.0  # How sharply to penalize blocks longer than max
 
 @dataclass
 class OptimizationWeights:
     """Weights for different optimization factors."""
-    time_preference: float = 0.4
-    room_preference: float = 0.4
-    continuity_preference: float = 0.2
+    time_preference: float = 0.3
+    room_preference: float = 0.0
+    continuity_preference: float = 0.7
     
     def normalize(self):
         total = self.time_preference + self.room_preference + self.continuity_preference
@@ -236,7 +236,7 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
         self.optimizer = ScheduleOptimizer(weights, time_prefs, room_prefs, continuity_prefs)
     
     def solve_optimized(self, requests: List[RehearsalRequest], 
-                       num_solutions: int = 50) -> Tuple[List, float]:
+                       num_solutions: int = 200) -> Tuple[List, float]:
         """Find and return the best schedule and its score."""
         # Build the model first
         print("Building scheduling model...")
@@ -357,7 +357,7 @@ def main():
     
     # Build model and solve
     scheduler.build_model(requests)
-    best_schedule, best_score = scheduler.solve_optimized(requests, num_solutions=50)
+    best_schedule, best_score = scheduler.solve_optimized(requests, num_solutions=200)
     
     if best_schedule:
         best_solution = best_schedule[0]
