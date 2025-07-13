@@ -75,10 +75,15 @@ def generate_schedule():
         for req in requests_data:
             members = req.get('group', [])
             duration = req.get('duration', 1)
-            print(f"Creating request: members={members}, duration={duration}")
+            leader = req.get('leader', '')
+            print(f"Creating request: members={members}, duration={duration}, leader={leader}")
             if not members:
                 return jsonify({'success': False, 'error': 'Rehearsal request must have at least one member'})
-            rehearsal_requests.append(RehearsalRequest(members=members, duration=duration))
+            if not leader:
+                return jsonify({'success': False, 'error': 'Rehearsal request must have a leader'})
+            if leader not in leaders:
+                return jsonify({'success': False, 'error': f'Leader "{leader}" not found in leaders list: {leaders}'})
+            rehearsal_requests.append(RehearsalRequest(members=members, duration=duration, leader=leader))
         
         print(f"Created {len(rehearsal_requests)} rehearsal requests")
         

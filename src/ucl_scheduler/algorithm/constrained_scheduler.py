@@ -17,9 +17,10 @@ from ..solution_viewing.terminal_viewer import view_schedule
 
 @dataclass
 class RehearsalRequest:
-    """Represents a rehearsal request with cast members and duration."""
+    """Represents a rehearsal request with cast members, duration, and leader."""
     members: List[str]
     duration: int
+    leader: str
     
     def __post_init__(self):
         # Convert to tuple for immutability in dict keys
@@ -83,8 +84,8 @@ class RequestProcessor:
         Split requests into single and multi-hour categories.
         
         Returns:
-            single_requests: List of single-hour request tuples
-            multi_requests: Dict mapping group tuples to list of rehearsal lengths
+            single_requests: List of single-hour request tuples (members, leader)
+            multi_requests: Dict mapping (members, leader) tuples to list of rehearsal lengths
         """
         single_requests = []
         multi_requests = {}
@@ -92,20 +93,22 @@ class RequestProcessor:
         for request in requests:
             group = request.members
             duration = request.duration
+            leader = request.leader
+            request_key = (group, leader)
             
-            if group in multi_requests:
+            if request_key in multi_requests:
                 # Already a multi-hour group, add this duration
-                multi_requests[group].append(duration)
-            elif group in single_requests:
+                multi_requests[request_key].append(duration)
+            elif request_key in single_requests:
                 # Convert from single to multi-hour
-                single_requests.remove(group)
-                multi_requests[group] = [duration, 1]
+                single_requests.remove(request_key)
+                multi_requests[request_key] = [duration, 1]
             elif duration == 1:
                 # Single-hour request
-                single_requests.append(group)
+                single_requests.append(request_key)
             else:
                 # Multi-hour request
-                multi_requests[group] = [duration]
+                multi_requests[request_key] = [duration]
         
         return single_requests, multi_requests
 
@@ -128,15 +131,12 @@ class ConstraintBuilder:
                     self.shifts[(n, d, s)] = self.model.new_bool_var(f"shift_n{n}_d{d}_s{s}")
     
     def add_availability_constraints(self):
-        """Add constraints based on cast and leader availability."""
+        """Add constraints based on cast availability."""
         for n in self.data.get_all_cast():
             for d in self.data.get_all_days():
                 for s in self.data.get_all_shifts():
                     # Cast member availability
                     if self.data.cast_availability[n][d][s] == 0:
-                        self.model.add(self.shifts[(n, d, s)] == 0)
-                    # Leader availability
-                    if self.data.leader_availability[0][d][s] == 0:
                         self.model.add(self.shifts[(n, d, s)] == 0)
     
     def add_single_hour_constraints(self, single_requests: List[Tuple]):
@@ -159,7 +159,7 @@ class ConstraintBuilder:
             self.model.add(sum(fulfillment_vars) == 1)
             
             # Link fulfillment to actual scheduling
-            member_indices = [self.data.member_to_index(member) for member in request]
+            member_indices = [self.data.member_to_index(member) for member in request[0]]
             for d in self.data.get_all_days():
                 for s in self.data.get_all_shifts():
                     # All requested members must be scheduled if request is fulfilled
@@ -176,6 +176,14 @@ class ConstraintBuilder:
                                 self.request_fulfillment[(request, d, s)] <= 
                                 self.shifts[(n, d, s)].Not()
                             )
+
+            # Add leader availability constraint
+            leader_index = self.data.member_to_index(request[1]) # Get leader index in cast_members
+            for d in self.data.get_all_days():
+                for s in self.data.get_all_shifts():
+                    # Check that the leader is available (cast_availability includes leaders)
+                    if self.data.cast_availability[leader_index][d][s] == 0:
+                        self.model.add(self.request_fulfillment[(request, d, s)] == 0)
     
     def add_multi_hour_constraints(self, multi_requests: Dict[Tuple, List[int]]):
         """Add constraints for multi-hour rehearsal requests."""
@@ -204,7 +212,7 @@ class ConstraintBuilder:
                 self.model.add(sum(fulfillment_vars) == count)
             
             # Link fulfillment to actual scheduling
-            member_indices = [self.data.member_to_index(member) for member in request]
+            member_indices = [self.data.member_to_index(member) for member in request[0]]
             for rehearsal_length in rehearsal_lengths:
                 for d in self.data.get_all_days():
                     for s in range(self.data.num_shifts - rehearsal_length + 1):
@@ -224,6 +232,17 @@ class ConstraintBuilder:
                                         self.multi_request_fulfillment[(request, d, s, rehearsal_length)] <=
                                         self.shifts[(n, d, s + hour)].Not()
                                     )
+            
+            # Add leader availability constraints for multi-hour requests
+            for request, rehearsal_lengths in multi_requests.items():
+                leader_index = self.data.member_to_index(request[1])  # Get leader index in cast_members
+                for rehearsal_length in rehearsal_lengths:
+                    for d in self.data.get_all_days():
+                        for s in range(self.data.num_shifts - rehearsal_length + 1):
+                            # Check that the leader is available for all hours of the rehearsal
+                            for hour in range(rehearsal_length):
+                                if self.data.cast_availability[leader_index][d][s + hour] == 0:
+                                    self.model.add(self.multi_request_fulfillment[(request, d, s, rehearsal_length)] == 0)
     
     def add_overlap_prevention_constraints(self, multi_requests: Dict[Tuple, List[int]]):
         """Add constraints to prevent overlapping multi-hour rehearsals for the same group."""
@@ -254,13 +273,13 @@ class ConstraintBuilder:
                     
                     # Check single-hour requests
                     for request in single_requests:
-                        member_indices = [self.data.member_to_index(member) for member in request]
+                        member_indices = [self.data.member_to_index(member) for member in request[0]]
                         if n in member_indices:
                             member_in_fulfilled_request.append(self.request_fulfillment[(request, d, s)])
                     
                     # Check multi-hour requests
                     for request, rehearsal_lengths in multi_requests.items():
-                        member_indices = [self.data.member_to_index(member) for member in request]
+                        member_indices = [self.data.member_to_index(member) for member in request[0]]
                         if n in member_indices:
                             # Check all possible start positions that could cover this shift
                             for rehearsal_length in rehearsal_lengths:
@@ -448,7 +467,8 @@ class RehearsalScheduler:
         test_model = cp_model.CpModel()
         
         # Create shift variables for this request only
-        member_indices = [self.data_manager.member_to_index(member) for member in request]
+        member_indices = [self.data_manager.member_to_index(member) for member in request[0]]
+        leader_index = self.data_manager.member_to_index(request[1])  # Get leader index
         shifts = {}
         for n in member_indices:
             for d in self.data_manager.get_all_days():
@@ -462,9 +482,12 @@ class RehearsalScheduler:
                     # Cast member availability
                     if self.data_manager.cast_availability[n][d][s] == 0:
                         test_model.add(shifts[(n, d, s)] == 0)
-                    # Leader availability
-                    if self.data_manager.leader_availability[0][d][s] == 0:
-                        test_model.add(shifts[(n, d, s)] == 0)
+        
+        # Add leader availability constraints
+        for d in self.data_manager.get_all_days():
+            for s in self.data_manager.get_all_shifts():
+                if self.data_manager.cast_availability[leader_index][d][s] == 0:
+                    test_model.add(shifts[(leader_index, d, s)] == 0)
         
         # Add request fulfillment constraint
         if duration == 1:
@@ -514,11 +537,11 @@ def main():
     
     # Define rehearsal requests
     rehearsal_requests = [
-        RehearsalRequest(['Ollie', 'Sophia', 'Tumo'], 1),
-        RehearsalRequest(['Ollie'], 1),
-        RehearsalRequest(['Ollie'], 1),
-        RehearsalRequest(['Mary', 'Sabine'], 2),
-        RehearsalRequest(['Mary', 'Sabine'], 1),
+        RehearsalRequest(['Ollie', 'Sophia', 'Tumo'], 1, 'Ollie'),
+        RehearsalRequest(['Ollie'], 1, 'Ollie'),
+        RehearsalRequest(['Ollie'], 1, 'Ollie'),
+        RehearsalRequest(['Mary', 'Sabine'], 2, 'Mary'),
+        RehearsalRequest(['Mary', 'Sabine'], 1, 'Mary'),
     ]
     
     # Create and run scheduler with availability data

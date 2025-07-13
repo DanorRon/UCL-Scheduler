@@ -346,10 +346,10 @@ def main():
     
     # Define rehearsal requests
     requests = [
-        RehearsalRequest(['Sophia', 'Tumo', 'Sabine'], 1),
-        RehearsalRequest(['Ollie', 'Mary'], 2),
-        RehearsalRequest(['Cal', 'Charlie'], 1),
-        RehearsalRequest(['Sophia', 'Tumo', 'Ollie'], 2),
+        RehearsalRequest(['Sophia', 'Tumo', 'Sabine'], 1, 'Sophia'),
+        RehearsalRequest(['Ollie', 'Mary'], 2, 'Ollie'),
+        RehearsalRequest(['Cal', 'Charlie'], 1, 'Cal'),
+        RehearsalRequest(['Sophia', 'Tumo', 'Ollie'], 2, 'Sophia'),
     ]
     
     print(f"\nOptimizing schedule for {len(requests)} rehearsal requests...")
