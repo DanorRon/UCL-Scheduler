@@ -1,1 +1,1 @@
-web: cd src && python -m ucl_scheduler.web_interface.app 
+web: python app.py 
