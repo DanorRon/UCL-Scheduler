@@ -52,18 +52,41 @@ def get_availability_data(spreadsheet_key: str) -> pd.DataFrame:
         pandas DataFrame containing the availability data
         
     Raises:
-        FileNotFoundError: If credentials file is not found
+        FileNotFoundError: If credentials file is not found and environment variable is not set
         Exception: If data cannot be retrieved from Google Sheets
     """
+    import os
+    import json
+    
     # Get the credentials file path relative to the package
     package_dir = Path(__file__).parent.parent
     credentials_path = package_dir / "credentials" / "ucl-scheduler-866343adad65.json"
     
-    if not credentials_path.exists():
-        raise FileNotFoundError(f"Credentials file not found at {credentials_path}")
-    
-    # Create gspread client with service account credentials
-    gc = service_account(filename=credentials_path)
+    # Try to use credentials file first (for local development)
+    if credentials_path.exists():
+        print("Using credentials file for local development")
+        gc = service_account(filename=credentials_path)
+    else:
+        # Fall back to environment variable (for deployment)
+        print("Credentials file not found, checking environment variable")
+        credentials_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
+        
+        if not credentials_json:
+            raise FileNotFoundError(
+                f"Credentials file not found at {credentials_path} and "
+                "GOOGLE_SHEETS_CREDENTIALS environment variable not set"
+            )
+        
+        try:
+            # Parse the JSON credentials from environment variable
+            credentials_dict = json.loads(credentials_json)
+            from gspread import service_account_from_dict
+            gc = service_account_from_dict(credentials_dict)
+            print("Using credentials from environment variable")
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON in GOOGLE_SHEETS_CREDENTIALS environment variable")
+        except Exception as e:
+            raise ValueError(f"Failed to create Google Sheets client from environment: {str(e)}")
     
     # Open the spreadsheet by key
     try:

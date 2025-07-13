@@ -1,4 +1,10 @@
-# Byte-compiled / optimized / DLL files
+# Credentials and sensitive files
+src/ucl_scheduler/credentials/
+*.json
+*.key
+*.pem
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -318,8 +324,12 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Project specific
-# Add any other files specific to your project here
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
 
 # Google Cloud service account credentials
 ucl-scheduler-*.json

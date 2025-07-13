@@ -64,9 +64,17 @@ def generate_schedule():
             print(f"Cast availability shape: {cast_availability.shape}")
             print(f"Leader availability shape: {leader_availability.shape}")
         except ValueError as e:
-            return jsonify({'success': False, 'error': f'Invalid data format: {str(e)}'})
+            error_msg = str(e)
+            if 'environment variable' in error_msg or 'Invalid JSON' in error_msg:
+                return jsonify({'success': False, 'error': f'Credentials configuration error: {error_msg}'})
+            else:
+                return jsonify({'success': False, 'error': f'Invalid data format: {error_msg}'})
         except FileNotFoundError as e:
-            return jsonify({'success': False, 'error': f'Credentials not found: {str(e)}'})
+            error_msg = str(e)
+            if 'environment variable' in error_msg:
+                return jsonify({'success': False, 'error': f'Credentials not configured: {error_msg}'})
+            else:
+                return jsonify({'success': False, 'error': f'Credentials file not found: {error_msg}'})
         except Exception as e:
             return jsonify({'success': False, 'error': f'Failed to retrieve availability data: {str(e)}'})
         
