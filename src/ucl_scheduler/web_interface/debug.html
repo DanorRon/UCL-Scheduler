@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropdown Debug</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .debug-section { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        select { min-width: 200px; min-height: 38px; }
+    </style>
+</head>
+<body>
+    <h1>Dropdown Debug Test</h1>
+    
+    <div class="debug-section">
+        <h3>Test 1: Basic Choices.js</h3>
+        <select id="test1" multiple>
+            <option value="option1">Option 1</option>
+            <option value="option2">Option 2</option>
+            <option value="option3">Option 3</option>
+        </select>
+    </div>
+    
+    <div class="debug-section">
+        <h3>Test 2: Dynamic Options</h3>
+        <select id="test2" multiple></select>
+        <button onclick="loadTestData()">Load Test Data</button>
+    </div>
+    
+    <div class="debug-section">
+        <h3>Test 3: API Call</h3>
+        <input type="url" id="sheets-url" placeholder="Enter Google Sheets URL" style="width: 400px;">
+        <button onclick="fetchCastMembers()">Fetch Cast Members</button>
+        <select id="test3" multiple></select>
+    </div>
+    
+    <div class="debug-section">
+        <h3>Console Logs</h3>
+        <div id="logs" style="background: #f0f0f0; padding: 10px; height: 200px; overflow-y: scroll; font-family: monospace; font-size: 12px;"></div>
+    </div>
+
+    <script>
+        // Override console.log to show in the page
+        const originalLog = console.log;
+        const originalError = console.error;
+        const logsDiv = document.getElementById('logs');
+        
+        function addLog(message, type = 'log') {
+            const logEntry = document.createElement('div');
+            logEntry.style.color = type === 'error' ? 'red' : 'black';
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsDiv.appendChild(logEntry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addLog(args.join(' '));
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addLog(args.join(' '), 'error');
+        };
+        
+        // Test 1: Basic Choices.js
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            console.log('Choices available:', typeof Choices !== 'undefined');
+            
+            if (typeof Choices !== 'undefined') {
+                try {
+                    const choices1 = new Choices('#test1', {
+                        removeItemButton: true,
+                        searchResultLimit: 100,
+                        searchFields: ['label', 'value'],
+                        shouldSort: false,
+                        placeholder: true,
+                        placeholderValue: 'Select options'
+                    });
+                    console.log('Test 1: Choices.js initialized successfully');
+                } catch (error) {
+                    console.error('Test 1: Error initializing Choices.js:', error);
+                }
+            } else {
+                console.error('Choices.js is not loaded!');
+            }
+        });
+        
+        // Test 2: Dynamic options
+        function loadTestData() {
+            console.log('Loading test data for Test 2');
+            const select = document.getElementById('test2');
+            select.innerHTML = '';
+            
+            const testMembers = ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'];
+            testMembers.forEach(member => {
+                const option = document.createElement('option');
+                option.value = member;
+                option.textContent = member;
+                select.appendChild(option);
+            });
+            
+            console.log('Added options:', select.options.length);
+            
+            try {
+                const choices2 = new Choices('#test2', {
+                    removeItemButton: true,
+                    searchResultLimit: 100,
+                    searchFields: ['label', 'value'],
+                    shouldSort: false,
+                    placeholder: true,
+                    placeholderValue: 'Select members'
+                });
+                console.log('Test 2: Choices.js initialized successfully');
+            } catch (error) {
+                console.error('Test 2: Error initializing Choices.js:', error);
+            }
+        }
+        
+        // Test 3: API call
+        function fetchCastMembers() {
+            const sheetsUrl = document.getElementById('sheets-url').value.trim();
+            if (!sheetsUrl) {
+                console.error('Please enter a Google Sheets URL');
+                return;
+            }
+            
+            console.log('Fetching cast members for URL:', sheetsUrl);
+            
+            fetch('http://localhost:8080/fetch-cast-members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sheets_url: sheetsUrl })
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                return response.json();
+            })
+            .then(result => {
+                console.log('Cast members response:', result);
+                if (result.success && result.cast_members) {
+                    const select = document.getElementById('test3');
+                    select.innerHTML = '';
+                    
+                    result.cast_members.forEach(member => {
+                        const option = document.createElement('option');
+                        option.value = member;
+                        option.textContent = member;
+                        select.appendChild(option);
+                    });
+                    
+                    console.log('Added cast members to dropdown:', result.cast_members.length);
+                    
+                    try {
+                        const choices3 = new Choices('#test3', {
+                            removeItemButton: true,
+                            searchResultLimit: 100,
+                            searchFields: ['label', 'value'],
+                            shouldSort: false,
+                            placeholder: true,
+                            placeholderValue: 'Select cast members'
+                        });
+                        console.log('Test 3: Choices.js initialized successfully');
+                    } catch (error) {
+                        console.error('Test 3: Error initializing Choices.js:', error);
+                    }
+                } else {
+                    console.error('Failed to load cast members:', result.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching cast members:', error);
+            });
+        }
+    </script>
+</body>
+</html> 

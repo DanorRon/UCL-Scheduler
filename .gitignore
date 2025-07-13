@@ -265,9 +265,6 @@ $RECYCLE.BIN/
 # Google OR-Tools license files (if any)
 *.lic
 
-# Generated HTML files
-*.html
-
 # Log files
 *.log
 

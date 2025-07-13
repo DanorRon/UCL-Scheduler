@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Scheduler</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            width: 100vw;
+            max-width: 100vw;
+            min-height: 100vh;
+            margin: 0;
+            background: white;
+            border-radius: 0;
+            box-shadow: none;
+            overflow-x: auto;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+            color: white;
+            padding: 40px 60px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 16px;
+        }
+        
+        .content {
+            padding: 40px 60px;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .section h2 {
+            margin: 0 0 20px 0;
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3748;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .input-group {
+            margin-bottom: 20px;
+        }
+        
+        .input-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #4a5568;
+            font-size: 14px;
+        }
+        
+        input[type="text"], input[type="number"], input[type="url"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+            background: #fafafa;
+        }
+        
+        input[type="text"]:focus, input[type="number"]:focus, input[type="url"]:focus {
+            outline: none;
+            border-color: #2d3748;
+            background: white;
+        }
+        
+        /* Style select elements to match input fields */
+        select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+            background: #fafafa;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 16px;
+            padding-right: 40px;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #2d3748;
+            background-color: white;
+        }
+        
+        /* Style for disabled select elements */
+        select:disabled {
+            background-color: #f5f5f5 !important;
+            color: #999 !important;
+            cursor: not-allowed !important;
+            border-color: #e2e8f0 !important;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+        }
+        
+        select:disabled option {
+            color: #999 !important;
+        }
+        
+        /* Loading state for select elements */
+        select.loading {
+            background-color: #f0f8ff !important;
+            color: #3182ce !important;
+            cursor: wait !important;
+        }
+        
+        select.loading option {
+            color: #3182ce !important;
+        }
+        
+        /* Specific styling for request group selects */
+        .request-group {
+            min-height: 44px; /* Match the height of input fields */
+        }
+        
+        /* Ensure dropdown has proper width */
+        .request-group {
+            min-width: 200px !important;
+            width: 100% !important;
+        }
+        
+        /* Fix button alignment in flex container */
+        .input-group .request-group {
+            flex: 1 !important;
+        }
+        
+        /* Ensure Choices.js container has proper width */
+        .choices {
+            min-width: 200px !important;
+            width: 100% !important;
+            flex: 1 !important;
+        }
+        
+        /* Style for leader dropdown */
+        .request-leader {
+            min-height: 20px; /* Match the height of input fields */
+        }
+        
+        /* Specific styling for leader dropdown Choices.js container */
+        .leader-group .choices .choices__inner {
+            min-height: 51px !important;
+            height: 51px !important;
+        }
+        
+        /* Specific styling for group members dropdown Choices.js container */
+        .group-members-group .choices .choices__inner {
+            min-height: 44px !important;
+            /* height: 44px !important; */
+            align-items: center !important;
+        }
+        
+        /* Center the input field in group members dropdown */
+        .group-members-group .choices__input {
+            margin-top: -5px !important;
+            margin-bottom: 0 !important;
+            align-self: center !important;
+        }
+        
+        /* Ensure duration input is 44px tall */
+        .request-duration {
+            height: 44px !important;
+            min-height: 44px !important;
+        }
+        
+        /* Make Choices.js dropdown match input field styling */
+        .choices__inner {
+            padding: 12px 16px !important;
+            border: 2px solid #e2e8f0 !important;
+            border-radius: 8px !important;
+            background: #fafafa !important;
+            font-size: 16px !important;
+            min-height: 40px !important;
+            height: auto !important;
+            transition: border-color 0.2s !important;
+            display: flex !important;
+            align-items: flex-start !important;
+            flex-wrap: wrap !important;
+            position: relative !important;
+        }
+        
+        .choices__inner:focus-within {
+            border-color: #2d3748 !important;
+            background: white !important;
+        }
+        
+        .choices__input {
+            font-size: 16px !important;
+            background: transparent !important;
+            height: auto !important;
+            line-height: 1.2 !important;
+            margin-top: 5px !important;
+            margin-bottom: 0 !important;
+        }
+        
+        .choices__list--multiple .choices__item {
+            margin: 2px 4px 2px 0 !important;
+            padding: 2px 6px !important;
+            font-size: 14px !important;
+        }
+        
+        /* Fix placeholder text alignment and color */
+        .choices__placeholder {
+            line-height: 1.2 !important;
+            vertical-align: middle !important;
+            padding-top: 0 !important;
+            text-align: left !important;
+            color: #718096 !important;
+            display: flex !important;
+            align-items: center !important;
+            height: 100% !important;
+            margin-top: 0 !important;
+            padding-bottom: 0 !important;
+            position: absolute !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            pointer-events: none !important;
+        }
+        
+        /* Override browser default placeholder styling */
+        .choices__placeholder::placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Force placeholder color with higher specificity */
+        .choices .choices__placeholder,
+        .choices__placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Target the actual placeholder element that Choices.js creates */
+        .choices__list--single .choices__placeholder,
+        .choices__list--multiple .choices__placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Hide placeholder when items are selected or dropdown is focused */
+        .choices__inner--focus .choices__placeholder,
+        .choices__inner--open .choices__placeholder,
+        .choices__list--multiple .choices__item + .choices__placeholder {
+            display: none !important;
+        }
+        
+
+        
+        /* Force group members placeholder color */
+        .group-members-group .choices .choices__placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Target group members dropdown specifically */
+        .group-members-group .choices__list--multiple .choices__placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Specific placeholder styling for leader dropdown */
+        .leader-group .choices__placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Force leader placeholder color */
+        .leader-group .choices .choices__placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Target leader dropdown specifically */
+        .leader-group .choices__list--single .choices__placeholder {
+            color: #718096 !important;
+        }
+        
+        /* Style for native leader dropdown - override general select styles */
+        select.request-leader {
+            background-color: #f7fafc !important;
+            border: 2px solid #e2e8f0 !important;
+            color: #4a5568 !important;
+        }
+        
+        select.request-leader:focus {
+            background-color: white !important;
+            border: 2px solid #2d3748 !important;
+            color: #2d3748 !important;
+        }
+        
+        /* Move Group Members label up */
+        .input-group label {
+            margin-top: -3px !important;
+        }
+        
+        /* Move Rehearsal Leader label up */
+        .leader-group label {
+            margin-top: -3px !important;
+        }
+        
+        .availability-box {
+            background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%);
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        
+        .availability-box label {
+            color: #2d3748;
+            font-weight: 600;
+            font-size: 15px;
+        }
+        
+        .availability-box input {
+            background: white;
+            border-color: #cbd5e0;
+        }
+        
+        .availability-box input:focus {
+            border-color: #3182ce;
+        }
+        
+        .availability-help {
+            color: #718096;
+            font-size: 13px;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+        
+        .request-item {
+            background: #f8fafc;
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 12px;
+            position: relative;
+        }
+        
+        .request-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .request-row {
+            display: flex;
+            gap: 12px;
+            align-items: end;
+        }
+        
+        .request-row .input-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+        
+        .request-row .input-group:last-child {
+            flex: 0 0 100px;
+        }
+        
+        .remove-btn {
+            position: absolute;
+            top: 13px;
+            right: 7px;
+            background: white;
+            color: #c53030;
+            border: 2px solid #c53030;
+            border-radius: 50%;
+            padding: 0;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .remove-btn:hover {
+            background: #feb2b2;
+        }
+        
+        .add-btn {
+            background: #3182ce;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+            margin-left: 16px;
+        }
+        
+        .add-btn:hover {
+            background: #2c5aa0;
+        }
+        
+        .submit-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px 24px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin-top: 20px;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+        }
+        
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        
+        #result {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+        
+        .success {
+            background: #c6f6d5;
+            border: 1px solid #9ae6b4;
+            color: #22543d;
+        }
+        
+        .error {
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+            color: #742a2a;
+        }
+        
+        .loading {
+            background: #bee3f8;
+            border: 1px solid #90cdf4;
+            color: #2a4365;
+        }
+        
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #2a4365;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-left: 8px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Spreadsheet-like schedule styles */
+        .schedule-table {
+            width: 100vw;
+            min-width: 1400px;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 0;
+            overflow: visible;
+            box-shadow: none;
+        }
+        
+        .schedule-table th {
+            background: #2d3748;
+            color: white;
+            padding: 12px 8px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            border-right: 1px solid #4a5568;
+        }
+        
+        .schedule-table th:not(:first-child) {
+            background: white;
+            color: #2d3748;
+            font-size: 13px;
+            padding: 10px 6px;
+            border: 1px solid #e2e8f0;
+            min-width: 100px;
+            white-space: nowrap;
+        }
+        
+        .schedule-table th:first-child {
+            text-align: left;
+            padding-left: 16px;
+        }
+        
+        .schedule-table td {
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 13px;
+            vertical-align: middle;
+            min-height: 40px;
+        }
+        
+        .schedule-table td:first-child {
+            text-align: left;
+            padding-left: 16px;
+            font-weight: 600;
+            background: #f7fafc;
+            color: #2d3748;
+        }
+        
+        .schedule-table tr:nth-child(even) {
+            background: #f8fafc;
+        }
+        
+        .schedule-table tr:hover {
+            background: #edf2f7;
+        }
+        
+        .rehearsal-cell {
+            background: #e6fffa !important;
+            color: #234e52;
+            font-weight: 500;
+            border: 2px solid #38a169;
+            position: relative;
+        }
+        
+        .rehearsal-cell .members {
+            font-size: 11px;
+            line-height: 1.2;
+            margin-top: 2px;
+        }
+        
+        .empty-cell {
+            color: #a0aec0;
+            font-style: italic;
+        }
+        
+        .download-btn {
+            background: #3182ce;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-top: 20px;
+        }
+        
+        .download-btn:hover {
+            background: #2c5aa0;
+        }
+        
+        @media (max-width: 640px) {
+            .container {
+                margin: 20px;
+                border-radius: 12px;
+            }
+            
+            .header {
+                padding: 30px 20px;
+            }
+            
+            .content {
+                padding: 30px 20px;
+            }
+            
+            .request-row {
+                flex-direction: column;
+                gap: 12px;
+            }
+            
+            .request-row .input-group:last-child {
+                flex: 1;
+            }
+            
+            .schedule-table {
+                font-size: 11px;
+            }
+            
+            .schedule-table th,
+            .schedule-table td {
+                padding: 6px 4px;
+            }
+        }
+        .schedule-table td,
+        .schedule-table th {
+            border: 1px solid #e2e8f0 !important;
+            background: white;
+            border-radius: 0 !important;
+        }
+        .empty-cell {
+            background: #f8fafc !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 0 !important;
+        }
+        
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Auto Scheduler</h1>
+            <p>Generate optimal rehearsal schedules using availability data</p>
+        </div>
+        
+        <div class="content">
+            <form id="scheduler-form">
+                <!-- Instructions -->
+                <div class="section">
+                    <h2>Instructions</h2>
+                    <div class="instructions-box" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                        <ol style="margin: 0; padding-left: 20px; color: #4a5568; line-height: 1.6;">
+                            <li style="margin-bottom: 8px;">Paste an availability sheet with the following format and design: <a href="https://docs.google.com/spreadsheets/d/1tfk5XGeK0CkHHuO9MDlI7ZJHZpq9tc6Zvqjfa1GHL7g/edit?usp=sharing" target="_blank" style="color: #3182ce; text-decoration: none;">Availability Sheet</a></li>
+                            <li style="margin-bottom: 8px;">Add your rehearsal requests.</li>
+                            <li style="margin-bottom: 0;">Click Generate Schedule to see your schedule!</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Availability URL -->
+                <div class="section">
+                    <h2>Availability Data</h2>
+                    <div class="availability-box">
+                        <div class="input-group">
+                            <label>Availability URL</label>
+                            <input type="url" id="sheets-url" placeholder="https://docs.google.com/spreadsheets/d/..." required>
+                            <div class="availability-help">
+                                Enter the URL of your Google Sheets availability spreadsheet. The spreadsheet should contain cast member names and their availability for each day and time slot.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rehearsal Requests -->
+                <div class="section">
+                    <h2>Rehearsal Requests</h2>
+                    <div id="requests-placeholder" style="color: #999; font-style: italic; padding: 20px; text-align: center; background: #f5f5f5; border-radius: 8px;">
+                        Please enter a Google Sheets URL above before adding rehearsal requests.
+                    </div>
+                    <div id="requests-container" style="display: none;">
+                        <div class="request-item">
+                            <div class="request-row">
+                                <div class="input-group group-members-group">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                        <label>Group Members</label>
+                                        <button type="button" onclick="addAllMembers(this)" style="padding: 8px 16px; background: #3182ce; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; white-space: nowrap; font-weight: 500; margin-top: -8px;">Add All</button>
+                                    </div>
+                                    <select class="request-group" multiple required style="width: 100%; min-width: 200px;"></select>
+                                </div>
+                                <div class="input-group leader-group">
+                                    <label>Rehearsal Leader</label>
+                                    <select class="request-leader" required style="width: 100%; min-width: 200px;"></select>
+                                </div>
+                                <div class="input-group">
+                                    <label>Duration (hours)</label>
+                                    <input type="number" class="request-duration" min="1" max="12" value="1" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="add-btn" onclick="addRequest()" style="display: none;">
+                        Add Request
+                    </button>
+                </div>
+
+                <button type="submit" class="submit-btn">
+                    Generate Schedule
+                </button>
+            </form>
+
+            <div id="result"></div>
+            
+            <!-- Schedule Display -->
+            <div id="schedule-display" style="display: none; margin-top: 30px;">
+                <div class="section">
+                    <h2>Generated Schedule</h2>
+                    <div id="schedule-content"></div>
+                    <div style="text-align: center;">
+                        <button type="button" class="download-btn" onclick="downloadSchedule()">
+                            Download Schedule
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let castMembers = [];
+        let leaders = [];
+        let fetchTimeout = null;
+        let lastProcessedUrl = '';
+        
+        // Function to force placeholder color
+        function forcePlaceholderColor() {
+            document.querySelectorAll('.choices__placeholder').forEach(placeholder => {
+                placeholder.style.color = '#718096';
+                placeholder.style.setProperty('color', '#718096', 'important');
+            });
+        }
+
+        // Debounced function to fetch cast members
+        function debouncedFetchCastMembers(url) {
+            // Clear any existing timeout
+            if (fetchTimeout) {
+                clearTimeout(fetchTimeout);
+            }
+            
+            // Set a new timeout to fetch after 1 second of no typing
+            fetchTimeout = setTimeout(() => {
+                if (url && url.includes('docs.google.com') && url !== lastProcessedUrl) {
+                    lastProcessedUrl = url;
+                    fetchCastMembers(url);
+                }
+            }, 1000); // Wait 1 second after user stops typing
+        }
+
+        // Fetch cast members from backend after entering a valid Google Sheets URL
+        document.getElementById('sheets-url').addEventListener('blur', function() {
+            const url = this.value.trim();
+            if (!url) return;
+            if (url !== lastProcessedUrl) {
+                lastProcessedUrl = url;
+                fetchCastMembers(url);
+            }
+        });
+
+        // Debounced fetch when the URL input changes
+        document.getElementById('sheets-url').addEventListener('input', function() {
+            const url = this.value.trim();
+            debouncedFetchCastMembers(url);
+        });
+
+        function fetchCastMembers(sheetsUrl) {
+            
+            // Show loading state for group members
+            document.querySelectorAll('.request-group').forEach(select => {
+                // Destroy previous Choices instance if any
+                if (select.choicesInstance) {
+                    select.choicesInstance.destroy();
+                }
+                
+                select.innerHTML = '';
+                const loadingOption = document.createElement('option');
+                loadingOption.value = '';
+                loadingOption.textContent = 'Loading cast members...';
+                loadingOption.disabled = true;
+                loadingOption.selected = true;
+                select.appendChild(loadingOption);
+                
+                // Add loading class and disable
+                select.classList.add('loading');
+                select.disabled = true;
+                
+                // Also apply loading class to Choices.js container if it exists
+                const choicesContainer = select.parentNode.querySelector('.choices');
+                if (choicesContainer) {
+                    choicesContainer.classList.add('loading');
+                }
+            });
+            
+            // Show loading state for leaders
+            document.querySelectorAll('.request-leader').forEach(select => {
+                select.innerHTML = '';
+                const loadingOption = document.createElement('option');
+                loadingOption.value = '';
+                loadingOption.textContent = 'Loading leaders...';
+                loadingOption.disabled = true;
+                loadingOption.selected = true;
+                select.appendChild(loadingOption);
+                
+                // Add loading class and disable
+                select.classList.add('loading');
+                select.disabled = true;
+            });
+            
+            // Show a small loading indicator near the URL input
+            const urlInput = document.getElementById('sheets-url');
+            if (!urlInput.nextElementSibling || !urlInput.nextElementSibling.classList.contains('loading-indicator')) {
+                const loadingIndicator = document.createElement('div');
+                loadingIndicator.className = 'loading-indicator';
+                loadingIndicator.style.cssText = 'color: #3182ce; font-size: 12px; margin-top: 4px;';
+                loadingIndicator.textContent = 'Loading cast members...';
+                urlInput.parentNode.insertBefore(loadingIndicator, urlInput.nextSibling);
+            }
+            
+            // Call the dedicated endpoint to get cast members
+            fetch('http://localhost:8080/fetch-cast-members', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sheets_url: sheetsUrl })
+            })
+            .then(response => {
+                return response.json();
+            })
+            .then(result => {
+                if (result.success && result.cast_members) {
+                    castMembers = result.cast_members;
+                    leaders = result.leaders || []; // Use leaders from API, empty array if not provided
+                    
+                    // Show requests container and add button only on success
+                    document.getElementById('requests-placeholder').style.display = 'none';
+                    document.getElementById('requests-container').style.display = 'block';
+                    document.querySelector('.add-btn').style.display = 'flex';
+                } else {
+                    console.error('Failed to load cast members:', result.error);
+                    castMembers = [];
+                    leaders = [];
+                    
+                    // Keep placeholder visible and form hidden on failure
+                    document.getElementById('requests-placeholder').style.display = 'block';
+                    document.getElementById('requests-container').style.display = 'none';
+                    document.querySelector('.add-btn').style.display = 'none';
+                }
+                updateAllMemberDropdowns();
+                updateAllLeaderDropdowns();
+                // Force placeholder color after updating dropdowns
+                setTimeout(forcePlaceholderColor, 200);
+                
+                // Remove loading indicator and classes
+                const loadingIndicator = document.querySelector('.loading-indicator');
+                if (loadingIndicator) {
+                    loadingIndicator.remove();
+                }
+                
+                // Remove loading class from all selects
+                document.querySelectorAll('.request-group').forEach(select => {
+                    select.classList.remove('loading');
+                    
+                    // Also remove loading class from Choices.js containers
+                    const choicesContainer = select.parentNode.querySelector('.choices');
+                    if (choicesContainer) {
+                        choicesContainer.classList.remove('loading');
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching cast members:', error);
+                castMembers = [];
+                leaders = [];
+                updateAllMemberDropdowns();
+                updateAllLeaderDropdowns();
+                // Force placeholder color after updating dropdowns
+                setTimeout(forcePlaceholderColor, 200);
+                
+                // Keep placeholder visible and form hidden on error
+                document.getElementById('requests-placeholder').style.display = 'block';
+                document.getElementById('requests-container').style.display = 'none';
+                document.querySelector('.add-btn').style.display = 'none';
+                
+                // Remove loading indicator and classes
+                const loadingIndicator = document.querySelector('.loading-indicator');
+                if (loadingIndicator) {
+                    loadingIndicator.remove();
+                }
+                
+                // Remove loading class from all group member selects
+                document.querySelectorAll('.request-group').forEach(select => {
+                    select.classList.remove('loading');
+                    
+                    // Also remove loading class from Choices.js containers
+                    const choicesContainer = select.parentNode.querySelector('.choices');
+                    if (choicesContainer) {
+                        choicesContainer.classList.remove('loading');
+                    }
+                });
+                
+                // Remove loading class from all leader selects
+                document.querySelectorAll('.request-leader').forEach(select => {
+                    select.classList.remove('loading');
+                });
+            });
+        }
+
+        function updateAllMemberDropdowns() {
+            document.querySelectorAll('.request-group').forEach(select => {
+                updateMemberDropdown(select);
+            });
+        }
+
+        function updateAllLeaderDropdowns() {
+            document.querySelectorAll('.request-leader').forEach(select => {
+                updateLeaderDropdown(select);
+            });
+        }
+
+        function updateMemberDropdown(select) {
+            
+            // Destroy previous Choices instance if any
+            if (select.choicesInstance) {
+                select.choicesInstance.destroy();
+            }
+            
+            if (!castMembers.length) {
+                select.innerHTML = '';
+                
+                // Create a placeholder option
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = 'Please enter a URL above before adding rehearsal requests.';
+                placeholderOption.disabled = true;
+                placeholderOption.selected = true;
+                select.appendChild(placeholderOption);
+                
+                // Disable the select
+                select.disabled = true;
+                
+                // Also apply disabled class to Choices.js container if it exists
+                const choicesContainer = select.parentNode.querySelector('.choices');
+                if (choicesContainer) {
+                    choicesContainer.classList.add('is-disabled');
+                }
+                return;
+            }
+            
+            // Enable the select for when we have cast members
+            select.disabled = false;
+            
+            // Remove disabled class from Choices.js container if it exists
+            const choicesContainer = select.parentNode.querySelector('.choices');
+            if (choicesContainer) {
+                choicesContainer.classList.remove('is-disabled');
+            }
+            
+            select.innerHTML = '';
+            
+            // Add a default option for placeholder
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Select members';
+            defaultOption.disabled = true;
+            defaultOption.selected = true;
+            select.appendChild(defaultOption);
+            
+            castMembers.forEach(member => {
+                const option = document.createElement('option');
+                option.value = member;
+                option.textContent = member;
+                select.appendChild(option);
+            });
+            
+            // Initialize Choices.js
+            try {
+                select.choicesInstance = new Choices(select, {
+                    removeItemButton: true,
+                    searchResultLimit: 100,
+                    searchFields: ['label', 'value'],
+                    shouldSort: false,
+                    placeholder: true,
+                    placeholderValue: 'Select members'
+                });
+                
+                // Force placeholder color after initialization
+                setTimeout(() => {
+                    const placeholder = select.parentNode.querySelector('.choices__placeholder');
+                    if (placeholder) {
+                        placeholder.style.color = '#718096';
+                    }
+                }, 100);
+                
+            } catch (error) {
+                console.error('Error initializing Choices.js:', error);
+            }
+        }
+
+        function updateLeaderDropdown(select) {
+            // Destroy previous Choices instance if any
+            if (select.choicesInstance) {
+                select.choicesInstance.destroy();
+            }
+            
+            if (!leaders.length) {
+                select.innerHTML = '';
+                
+                // Create a placeholder option
+                const placeholderOption = document.createElement('option');
+                placeholderOption.value = '';
+                placeholderOption.textContent = 'Please enter a URL above before adding rehearsal requests.';
+                placeholderOption.disabled = true;
+                placeholderOption.selected = true;
+                select.appendChild(placeholderOption);
+                
+                // Disable the select
+                select.disabled = true;
+                
+                // Also apply disabled class to Choices.js container if it exists
+                const choicesContainer = select.parentNode.querySelector('.choices');
+                if (choicesContainer) {
+                    choicesContainer.classList.add('is-disabled');
+                }
+                return;
+            }
+            
+            // Enable the select for when we have leaders
+            select.disabled = false;
+            
+            // Remove disabled class from Choices.js container if it exists
+            const choicesContainer = select.parentNode.querySelector('.choices');
+            if (choicesContainer) {
+                choicesContainer.classList.remove('is-disabled');
+            }
+            
+            select.innerHTML = '';
+            // Add all leader options
+            leaders.forEach((leader, index) => {
+                const option = document.createElement('option');
+                option.value = leader;
+                option.textContent = leader;
+                select.appendChild(option);
+            });
+            // Set the first leader as the default selected value
+            if (leaders.length > 0) {
+                select.value = leaders[0];
+            }
+            // Use native select for leader dropdown - no Choices.js
+        }
+
+        function addRequest() {
+            const container = document.getElementById('requests-container');
+            const newRequest = document.createElement('div');
+            newRequest.className = 'request-item';
+            newRequest.innerHTML = `
+                <div class="request-row">
+                                            <div class="input-group group-members-group">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                <label>Group Members</label>
+                                <button type="button" onclick="addAllMembers(this)" style="padding: 8px 16px; background: #3182ce; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; white-space: nowrap; font-weight: 500; margin-top: -8px;">Add All</button>
+                            </div>
+                            <select class="request-group" multiple required style="width: 100%; min-width: 200px;"></select>
+                        </div>
+                                            <div class="input-group leader-group">
+                            <label>Rehearsal Leader</label>
+                            <select class="request-leader" required style="width: 100%; min-width: 200px;"></select>
+                        </div>
+                    <div class="input-group">
+                        <label>Duration (hours)</label>
+                        <input type="number" class="request-duration" min="1" max="12" value="1" required>
+                    </div>
+                </div>
+                <button type="button" class="remove-btn" onclick="removeRequest(this)">×</button>
+            `;
+            container.appendChild(newRequest);
+            
+            // If cast members are already loaded, populate the dropdowns immediately
+            if (castMembers.length > 0) {
+                updateMemberDropdown(newRequest.querySelector('.request-group'));
+                updateLeaderDropdown(newRequest.querySelector('.request-leader'));
+            } else {
+                // Otherwise, they will be populated when cast members are loaded
+            }
+        }
+
+        // Update the initial request dropdowns on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateAllMemberDropdowns();
+            updateAllLeaderDropdowns();
+        });
+
+        function removeRequest(button) {
+            button.parentElement.remove();
+        }
+
+        function addAllMembers(button) {
+            console.log('Add All button clicked');
+            console.log('Cast members:', castMembers);
+            
+            // Navigate up to the input-group, then find the select
+            const inputGroup = button.closest('.input-group');
+            const select = inputGroup.querySelector('.request-group');
+            console.log('Found select:', select);
+            
+            if (!select) {
+                console.error('Could not find select element');
+                return;
+            }
+            
+            if (select.choicesInstance) {
+                console.log('Using Choices.js instance');
+                const currentValues = select.choicesInstance.getValue(true).map(item => item.value);
+                const allValues = [...new Set([...currentValues, ...castMembers])];
+                select.choicesInstance.setChoiceByValue(allValues);
+                
+                // Force the container to recalculate its height
+                setTimeout(() => {
+                    const choicesContainer = select.parentNode.querySelector('.choices__inner');
+                    if (choicesContainer) {
+                        choicesContainer.style.height = 'auto';
+                    }
+                }, 100);
+            } else {
+                console.log('Using fallback method');
+                // Fallback for when Choices.js isn't initialized yet
+                const currentValues = Array.from(select.selectedOptions).map(opt => opt.value);
+                const allValues = [...new Set([...currentValues, ...castMembers])];
+                select.innerHTML = ''; // Clear existing options
+                castMembers.forEach(member => {
+                    const option = document.createElement('option');
+                    option.value = member;
+                    option.textContent = member;
+                    select.appendChild(option);
+                });
+                // Select all options
+                Array.from(select.options).forEach(option => {
+                    option.selected = true;
+                });
+            }
+        }
+
+        document.getElementById('scheduler-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            // Collect form data
+            const sheetsUrl = document.getElementById('sheets-url').value.trim();
+            const requests = [];
+            
+            document.querySelectorAll('.request-item').forEach(item => {
+                const groupSelect = item.querySelector('.request-group');
+                let group = [];
+                if (groupSelect.choicesInstance) {
+                    group = groupSelect.choicesInstance.getValue(true);
+                } else {
+                    group = Array.from(groupSelect.selectedOptions).map(opt => opt.value);
+                }
+                
+                const leaderSelect = item.querySelector('.request-leader');
+                let leader = leaderSelect.value || '';
+                
+                const duration = parseInt(item.querySelector('.request-duration').value);
+                if (group.length > 0 && leader && duration > 0) {
+                    requests.push({ group, leader, duration });
+                }
+            });
+
+            // Validate Google Sheets URL
+            if (!sheetsUrl) {
+                showResult('Please enter a Google Sheets URL.', 'error');
+                return;
+            }
+
+            // Validate data
+            if (requests.length === 0) {
+                showResult('Please add at least one rehearsal request.', 'error');
+                return;
+            }
+
+            // Show loading
+            showResult('Processing your schedule...', 'loading');
+
+            // Prepare data for the API
+            const data = {
+                sheets_url: sheetsUrl,
+                requests: requests,
+                preferences: {
+                    morning: 30,
+                    afternoon: 40,
+                    evening: 30
+                }
+            };
+
+            // Call the Flask API
+            fetch('http://localhost:8080/generate-schedule', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    showResult(`Schedule generated successfully! Score: ${result.score.toFixed(1)}/100`, 'success');
+                    // Display the schedule
+                    displaySchedule(result.schedule);
+                    document.getElementById('schedule-display').style.display = 'block';
+                } else {
+                    showResult(`Error: ${result.error}`, 'error');
+                    document.getElementById('schedule-display').style.display = 'none';
+                }
+            })
+            .catch(error => {
+                showResult(`Error: ${error.message}`, 'error');
+                document.getElementById('schedule-display').style.display = 'none';
+            });
+        });
+
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = message;
+            resultDiv.className = type;
+        }
+
+        function displaySchedule(schedule) {
+            const scheduleContent = document.getElementById('schedule-content');
+            scheduleContent.innerHTML = '';
+
+            if (!schedule || schedule.length === 0) {
+                scheduleContent.innerHTML = '<p style="text-align: center; color: #718096; font-style: italic;">No rehearsals scheduled for this period.</p>';
+                return;
+            }
+
+            const table = document.createElement('table');
+            table.className = 'schedule-table';
+
+            // Header
+            const thead = document.createElement('thead');
+            const headerRow = document.createElement('tr');
+            const timeSlots = [
+                'Day', '9:00 - 10:00', '10:00 - 11:00', '11:00 - 12:00', '12:00 - 13:00',
+                '13:00 - 14:00', '14:00 - 15:00', '15:00 - 16:00', '16:00 - 17:00',
+                '17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00', '20:00 - 21:00', '21:00 - 22:00'
+            ];
+            timeSlots.forEach(slot => {
+                const th = document.createElement('th');
+                th.innerHTML = slot;
+                th.style.textAlign = 'center';
+                th.style.fontWeight = 'bold';
+                th.style.color = '#2d3748';
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            // Body
+            const tbody = document.createElement('tbody');
+            const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+            for (let day = 0; day < 7; day++) {
+                const row = document.createElement('tr');
+                const dayCell = document.createElement('td');
+                dayCell.innerHTML = dayNames[day];
+                dayCell.style.fontWeight = 'bold';
+                dayCell.style.color = '#2d3748';
+                dayCell.style.textAlign = 'center';
+                dayCell.style.backgroundColor = '#f7fafc';
+                row.appendChild(dayCell);
+
+                let shift = 0;
+                while (shift < 13) {
+                    const shiftData = (schedule[day] && schedule[day][shift]) ? schedule[day][shift] : null;
+                    const membersArr = shiftData && shiftData.members ? shiftData.members.filter(m => m && m.trim()) : [];
+                    const leader = shiftData && shiftData.leader ? shiftData.leader : '';
+                    const members = membersArr.join(', ');
+                    
+                    if (members) {
+                        // Find how many consecutive shifts have the same members
+                        let colspan = 1;
+                        while (
+                            shift + colspan < 13 &&
+                            schedule[day][shift + colspan] &&
+                            schedule[day][shift + colspan].members &&
+                            schedule[day][shift + colspan].members.filter(m => m && m.trim()).join(', ') === members
+                        ) {
+                            colspan++;
+                        }
+                        const cell = document.createElement('td');
+                        cell.className = 'rehearsal-cell';
+                        cell.colSpan = colspan;
+                        
+                        // Create two-row layout: leader on top, members below
+                        const otherMembers = membersArr.filter(m => m !== leader).join(', ');
+                        
+                        cell.innerHTML = `
+                            <div style="display: flex; flex-direction: column; height: 100%;">
+                                <div style="font-weight: bold; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">
+                                    ${leader}
+                                </div>
+                                <div style="font-size: 0.9em; color: #4a5568;">
+                                    ${otherMembers}
+                                </div>
+                            </div>
+                        `;
+                        row.appendChild(cell);
+                        shift += colspan;
+                    } else {
+                        // Do not merge empty cells; always render a single cell
+                        const cell = document.createElement('td');
+                        cell.className = 'empty-cell';
+                        cell.textContent = '—';
+                        row.appendChild(cell);
+                        shift += 1;
+                    }
+                }
+                tbody.appendChild(row);
+            }
+            table.appendChild(tbody);
+            scheduleContent.appendChild(table);
+        }
+
+        function downloadSchedule() {
+            const scheduleContent = document.getElementById('schedule-content');
+            const scheduleText = scheduleContent.innerHTML;
+            const blob = new Blob([scheduleText], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'auto_schedule.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
