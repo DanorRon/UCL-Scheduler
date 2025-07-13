@@ -1,0 +1,1 @@
+web: python -m ucl_scheduler.web_interface.app 

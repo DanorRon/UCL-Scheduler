@@ -91,7 +91,8 @@ class FactorCalculator:
         
         for day in schedule:
             for shift_idx, shift in enumerate(day):
-                if shift:  # If there's a rehearsal in this shift
+                # Check if there's a rehearsal in this shift (has members)
+                if shift and isinstance(shift, dict) and shift.get('members'):
                     total_rehearsals += 1
                     
                     # Categorize by time of day
@@ -154,7 +155,7 @@ class FactorCalculator:
             # Find consecutive rehearsal blocks (any cast members)
             block_len = 0
             for shift in day:
-                if shift:  # If there's any rehearsal in this shift
+                if shift and isinstance(shift, dict) and shift.get('members'):  # If there's any rehearsal in this shift
                     block_len += 1
                 else:
                     if block_len > 0:

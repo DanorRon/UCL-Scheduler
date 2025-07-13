@@ -335,9 +335,15 @@ class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
     suitable for display and further processing.
     """
     
-    def __init__(self, shifts: Dict, data_manager: DataManager, limit: int):
+    def __init__(self, shifts: Dict, request_fulfillment: Dict, multi_request_fulfillment: Dict, 
+                 single_requests: List[Tuple], multi_requests: Dict[Tuple, List[int]], 
+                 data_manager: DataManager, limit: int):
         cp_model.CpSolverSolutionCallback.__init__(self)
         self._shifts = shifts
+        self._request_fulfillment = request_fulfillment
+        self._multi_request_fulfillment = multi_request_fulfillment
+        self._single_requests = single_requests
+        self._multi_requests = multi_requests
         self._data = data_manager
         self._solution_count = 0
         self._solution_limit = limit
@@ -346,16 +352,39 @@ class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
     def on_solution_callback(self):
         self._solution_count += 1
         
-        # Create clean array format
+        # Create clean array format with leader information
         solution_array = []
         for d in range(self._data.num_days):
             day_schedule = []
             for s in range(self._data.num_shifts):
                 scheduled_cast = []
-                for n in range(self._data.num_cast):
-                    if self.value(self._shifts[(n, d, s)]):
-                        scheduled_cast.append(self._data.index_to_member(n))
-                day_schedule.append(scheduled_cast)
+                leader = None
+                
+                # Check single-hour requests for this day/shift
+                for request in self._single_requests:
+                    if self.value(self._request_fulfillment[(request, d, s)]):
+                        scheduled_cast = list(request[0])  # Get members from request
+                        leader = request[1]  # Get leader from request
+                        break
+                
+                # Check multi-hour requests for this day/shift
+                if not scheduled_cast:
+                    for request, rehearsal_lengths in self._multi_requests.items():
+                        for rehearsal_length in rehearsal_lengths:
+                            # Check if this shift is part of a multi-hour rehearsal
+                            for start_s in range(max(0, s - rehearsal_length + 1), s + 1):
+                                if self.value(self._multi_request_fulfillment[(request, d, start_s, rehearsal_length)]):
+                                    scheduled_cast = list(request[0])  # Get members from request
+                                    leader = request[1]  # Get leader from request
+                                    break
+                        if scheduled_cast:
+                            break
+                
+                # Store both members and leader (empty if no rehearsal scheduled)
+                day_schedule.append({
+                    'members': scheduled_cast,
+                    'leader': leader
+                })
             solution_array.append(day_schedule)
         
         self._solutions.append(solution_array)
@@ -365,8 +394,8 @@ class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
             print(f"Stop search after {self._solution_limit} solutions")
             self.stop_search()
     
-    def get_solutions(self) -> List[List[List[List[str]]]]:
-        """Return the clean solution arrays."""
+    def get_solutions(self) -> List[List[List[Dict]]]:
+        """Return the clean solution arrays with leader information."""
         return self._solutions
     
     def solutionCount(self) -> int:
@@ -394,24 +423,29 @@ class RehearsalScheduler:
         self.constraint_builder.add_availability_constraints()
         
         # Process requests
-        single_requests, multi_requests = self.request_processor.split_requests(requests)
+        self._single_requests, self._multi_requests = self.request_processor.split_requests(requests)
         
         # Add request-specific constraints
-        self.constraint_builder.add_single_hour_constraints(single_requests)
-        self.constraint_builder.add_multi_hour_constraints(multi_requests)
-        self.constraint_builder.add_overlap_prevention_constraints(multi_requests)
-        self.constraint_builder.add_scheduling_constraints(single_requests, multi_requests)
-        self.constraint_builder.add_same_group_different_days_constraints(multi_requests)
+        self.constraint_builder.add_single_hour_constraints(self._single_requests)
+        self.constraint_builder.add_multi_hour_constraints(self._multi_requests)
+        self.constraint_builder.add_overlap_prevention_constraints(self._multi_requests)
+        self.constraint_builder.add_scheduling_constraints(self._single_requests, self._multi_requests)
+        self.constraint_builder.add_same_group_different_days_constraints(self._multi_requests)
         
-        return single_requests, multi_requests
+        return self._single_requests, self._multi_requests
     
-    def solve(self, solution_limit: int = 1) -> List[List[List[List[str]]]]:
+    def solve(self, solution_limit: int = 1) -> List[List[List[Dict]]]:
         """Solve the scheduling problem and return solutions."""
         solver = cp_model.CpSolver()
         solver.parameters.enumerate_all_solutions = True
         
+        # Use the processed requests from build_model
         solution_collector = RehearsalSolutionCollector(
-            self.constraint_builder.shifts, 
+            self.constraint_builder.shifts,
+            self.constraint_builder.request_fulfillment,
+            self.constraint_builder.multi_request_fulfillment,
+            self._single_requests,
+            self._multi_requests,
             self.data_manager, 
             solution_limit
         )
