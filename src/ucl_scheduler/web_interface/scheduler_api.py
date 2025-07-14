@@ -19,7 +19,7 @@ from ucl_scheduler.algorithm.optimal_scheduler import (
     RoomPreferences, 
     ContinuityPreferences
 )
-from ucl_scheduler.algorithm.constrained_scheduler import RehearsalRequest
+from ucl_scheduler.algorithm.constrained_scheduler import RehearsalRequest, SolverStatus
 from ucl_scheduler.data_parsing.availability_manager import parse_spreadsheet_url, get_parsed_availability
 import json
 from datetime import datetime
@@ -80,18 +80,19 @@ def generate_schedule():
         
         # Convert requests to RehearsalRequest objects
         rehearsal_requests = []
-        for req in requests_data:
+        for i, req in enumerate(requests_data):
             members = req.get('group', [])
             duration = req.get('duration', 1)
             leader = req.get('leader', '')
-            print(f"Creating request: members={members}, duration={duration}, leader={leader}")
             if not members:
                 return jsonify({'success': False, 'error': 'Rehearsal request must have at least one member'})
+            index = i + 1  # Index is simply the position in the list (plus 1 to correspond to the website numbering)
+            print(f"Creating request: members={members}, duration={duration}, leader={leader}, index={index}")
             if not leader:
                 return jsonify({'success': False, 'error': 'Rehearsal request must have a leader'})
             if leader not in leaders:
                 return jsonify({'success': False, 'error': f'Leader "{leader}" not found in leaders list: {leaders}'})
-            rehearsal_requests.append(RehearsalRequest(members=members, duration=duration, leader=leader))
+            rehearsal_requests.append(RehearsalRequest(members=members, duration=duration, leader=leader, index=index))
         
         print(f"Created {len(rehearsal_requests)} rehearsal requests")
         
@@ -107,11 +108,7 @@ def generate_schedule():
         print(f"All requested members found in cast data: {list(all_requested_members)}")
         
         # Create optimization preferences
-        time_prefs = TimeOfDayPreferences(
-            morning_weight=preferences.get('morning', 30) / 100,
-            afternoon_weight=preferences.get('afternoon', 40) / 100,
-            evening_weight=preferences.get('evening', 30) / 100
-        )
+        time_prefs = TimeOfDayPreferences()
         time_prefs.normalize()
         
         room_prefs = RoomPreferences()
@@ -140,27 +137,47 @@ def generate_schedule():
         # Build and solve the model
         print("Building and solving scheduling problem...")
         try:
-            best_schedule, score = scheduler.solve_optimized(rehearsal_requests, num_solutions=5)
+            best_schedule, score, infeasible_requests, status = scheduler.solve_optimized(rehearsal_requests, num_solutions=200)
             print("Best schedule and score obtained from solve_optimized.")
         except Exception as e:
-            print(f"Error solving optimization: {e}")
+            print(f"Error in solve_optimized: {e}")
             import traceback
             traceback.print_exc()
-            return jsonify({'success': False, 'error': f'Failed to solve optimization: {str(e)}'})
+            return jsonify({'success': False, 'error': f'Failed to execute solve_optimized: {str(e)}'})
         
+        ''' # This does not work because the default value of best_schedule is []
         if not best_schedule:
             return jsonify({
                 'success': False, 
+                'error': 'No schedule returned from solve_optimized.'
+            })
+        '''
+        
+        if status == SolverStatus.INFEASIBLE:
+            return jsonify({
+                'success': False,
+                'status': status.name.lower(),
                 'error': 'No feasible schedule found. Please check your requests and try again.'
             })
-        
-        # Return the best schedule directly (already in 2D array format)
-        return jsonify({
-            'success': True,
-            'schedule': best_schedule,
-            'score': score,
-            'message': f'Schedule generated successfully! Score: {score:.1f}/100'
-        })
+        elif status == SolverStatus.PARTIALLY_FEASIBLE:
+            return jsonify({
+                'success': True,
+                'schedule': best_schedule,
+                'score': score,
+                'infeasible_requests': infeasible_requests,
+                'status': status.name.lower(),
+                'message': f'Schedule generated successfully! Score: {score:.1f}/100'
+            })
+        elif status == SolverStatus.FEASIBLE:
+            return jsonify({
+                'success': True,
+                'schedule': best_schedule,
+                'score': score,
+                'status': status.name.lower(),
+                'message': f'Schedule generated successfully! Score: {score:.1f}/100'
+            })
+        else:
+            raise ValueError(f"Invalid solver status: {status}")
         
     except Exception as e:
         print(f"Error generating schedule: {e}")

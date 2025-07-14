@@ -5,7 +5,7 @@ Add features incrementally over time.
 
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
-from .constrained_scheduler import RehearsalScheduler, RehearsalRequest
+from .constrained_scheduler import RehearsalScheduler, RehearsalRequest, SolverStatus
 
 from ..solution_viewing.terminal_viewer import view_schedule
 
@@ -236,7 +236,7 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
         self.optimizer = ScheduleOptimizer(weights, time_prefs, room_prefs, continuity_prefs)
     
     def solve_optimized(self, requests: List[RehearsalRequest], 
-                       num_solutions: int = 200) -> Tuple[List, float]:
+                       num_solutions: int = 200) -> Tuple[List, float, List, SolverStatus]:
         """Find and return the best schedule and its score."""
         # Build the model first
         print("Building scheduling model...")
@@ -244,18 +244,29 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
         
         # Get multiple feasible solutions
         print("Solving optimization problem...")
-        solutions = self.solve(solution_limit=num_solutions)
-        
-        if not solutions:
-            print("No feasible solutions found")
-            return [], 0.0
-        
-        # Find the best one
+        status = self.solve_with_infeasible_requests(solution_limit=num_solutions)
+        solutions = self.solutions
+        infeasible_requests = self.infeasible_requests
         best_schedule, best_score = self.optimizer.find_best_schedule(solutions)
-        
-        print(f"Generated {len(solutions)} solutions")
-        print(f"Best schedule score: {best_score:.2f}")
-        return best_schedule, best_score
+
+        if status == SolverStatus.INFEASIBLE:
+            print("No feasible solutions found")
+            return [], 0.0, [], status
+        elif status == SolverStatus.PARTIALLY_FEASIBLE:
+            # Give the infeasibility analysis and the partial solutions
+            print("Partially feasible solutions found")
+            print(f"Best schedule: {best_schedule}")
+            print(f"Best score: {best_score}")
+            print(f"Infeasible requests: {infeasible_requests}")
+            return best_schedule, best_score, infeasible_requests, status
+        elif status == SolverStatus.FEASIBLE:
+            # Give the solutions
+            print("Feasible solutions found")
+            print(f"Best schedule: {best_schedule}")
+            print(f"Best score: {best_score}")
+            return best_schedule, best_score, infeasible_requests, status # infeasible_requests is empty
+        else:
+            raise ValueError(f"Invalid solver status: {status}")
     
     def analyze_schedule(self, schedule) -> Dict:
         """Analyze a schedule and return factor scores."""
@@ -347,17 +358,17 @@ def main():
     
     # Define rehearsal requests
     requests = [
-        RehearsalRequest(['Sophia', 'Tumo', 'Sabine'], 1, 'Sophia'),
-        RehearsalRequest(['Ollie', 'Mary'], 2, 'Ollie'),
-        RehearsalRequest(['Cal', 'Charlie'], 1, 'Cal'),
-        RehearsalRequest(['Sophia', 'Tumo', 'Ollie'], 2, 'Sophia'),
+        RehearsalRequest(['Sophia', 'Tumo', 'Sabine'], 1, 'Sophia', 1),
+        RehearsalRequest(['Ollie', 'Mary'], 2, 'Ollie', 2),
+        RehearsalRequest(['Cal', 'Charlie'], 1, 'Cal', 3),
+        RehearsalRequest(['Sophia', 'Tumo', 'Ollie'], 2, 'Sophia', 4),
     ]
     
     print(f"\nOptimizing schedule for {len(requests)} rehearsal requests...")
     
     # Build model and solve
     scheduler.build_model(requests)
-    best_schedule, best_score = scheduler.solve_optimized(requests, num_solutions=200)
+    best_schedule, best_score, infeasible_requests, status = scheduler.solve_optimized(requests, num_solutions=200)
     
     if best_schedule:
         best_solution = best_schedule[0]

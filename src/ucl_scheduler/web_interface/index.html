@@ -503,8 +503,9 @@
         
         /* Spreadsheet-like schedule styles */
         .schedule-table {
-            width: 100vw;
-            min-width: 1400px;
+            width: 100%;
+            min-width: 900px;
+            max-width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
             background: white;
@@ -599,6 +600,12 @@
             background: #2c5aa0;
         }
         
+        .partial-success {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+        }
+        
         @media (max-width: 640px) {
             .container {
                 margin: 20px;
@@ -643,7 +650,10 @@
             border-radius: 0 !important;
         }
         
-
+        .schedule-table-wrapper {
+            width: 100%;
+            overflow-x: auto;
+        }
     </style>
 </head>
 <body>
@@ -1217,13 +1227,44 @@
             })
             .then(response => response.json())
             .then(result => {
-                if (result.success) {
+                if (result.success && result.status === "feasible") {
                     showResult(`Schedule generated successfully! Score: ${result.score.toFixed(1)}/100`, 'success');
-                    // Display the schedule
                     displaySchedule(result.schedule);
                     document.getElementById('schedule-display').style.display = 'block';
-                } else {
-                    showResult(`Error: ${result.error}`, 'error');
+                } else if (result.success && result.status === "partially_feasible") {
+                    // Build infeasible requests summary for inside the result box (grouped by size, extensible)
+                    let partialMsg = `<div style='font-size: 1.1em; font-weight: 500; margin-bottom: 8px;'>Partial schedule generated. Score: ${result.score.toFixed(1)}/100</div>`;
+                    let infeasibleHtml = "<div style='margin-top:12px;'>";
+                    function ordinal(n) {
+                        const s = ["th", "st", "nd", "rd"], v = n % 100;
+                        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+                    }
+                    function groupLabel(size) {
+                        if (size === 1) return 'requests cannot be fulfilled with the current availability';
+                        if (size === 2) return 'pairs of requests cannot be fulfilled simultaneously with the current availability';
+                        if (size === 3) return 'triplets of requests cannot be fulfilled simultaneously with the current availability';
+                        return `${ordinal(size)}-size groups of requests cannot be fulfilled simultaneously with the current availability`;
+                    }
+                    (result.infeasible_requests || []).forEach((group, i) => {
+                        if (group.length === 0) return;
+                        let label = groupLabel(i + 1);
+                        infeasibleHtml += `<b>The following ${label}:</b><ul style='margin:0;padding-left:20px;'>`;
+                        group.forEach(indices => {
+                            const label = indices.length === 1 ? 'Request' : 'Requests';
+                            infeasibleHtml += `<li>${label} ${indices.join(' & ')}</li>`;
+                        });
+                        infeasibleHtml += '</ul>';
+                    });
+                    infeasibleHtml += "</div>";
+                    showResult(
+                        `${partialMsg}${infeasibleHtml}`,
+                        'partial-success'
+                    );
+                    document.getElementById('schedule-content').innerHTML = '';
+                    displaySchedule(result.schedule);
+                    document.getElementById('schedule-display').style.display = 'block';
+                } else if (result.status === "infeasible" || !result.success) {
+                    showResult(`Error: ${result.error || "No feasible schedule found."}`, 'error');
                     document.getElementById('schedule-display').style.display = 'none';
                 }
             })
@@ -1333,7 +1374,11 @@
                 tbody.appendChild(row);
             }
             table.appendChild(tbody);
-            scheduleContent.appendChild(table);
+            // Wrap the table in a scrollable div for responsiveness
+            const wrapper = document.createElement('div');
+            wrapper.className = 'schedule-table-wrapper';
+            wrapper.appendChild(table);
+            scheduleContent.appendChild(wrapper);
         }
 
         function downloadSchedule() {
@@ -1349,6 +1394,38 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
         }
+
+        function updateRequestNumbers() {
+            const requestItems = document.querySelectorAll('.request-item');
+            requestItems.forEach((item, idx) => {
+                let numberLabel = item.querySelector('.request-number-label');
+                if (!numberLabel) {
+                    numberLabel = document.createElement('div');
+                    numberLabel.className = 'request-number-label';
+                    numberLabel.style.fontWeight = 'bold';
+                    numberLabel.style.marginBottom = '8px';
+                    item.insertBefore(numberLabel, item.firstChild);
+                }
+                numberLabel.textContent = `Request ${idx + 1}`;
+            });
+        }
+
+        // Patch addRequest to call updateRequestNumbers after adding
+        const originalAddRequest = addRequest;
+        addRequest = function() {
+            originalAddRequest.apply(this, arguments);
+            updateRequestNumbers();
+        };
+
+        // Patch removeRequest to call updateRequestNumbers after removing
+        const originalRemoveRequest = removeRequest;
+        removeRequest = function(button) {
+            originalRemoveRequest.apply(this, arguments);
+            updateRequestNumbers();
+        };
+
+        // Call updateRequestNumbers on page load
+        window.addEventListener('DOMContentLoaded', updateRequestNumbers);
     </script>
 </body>
 </html>
