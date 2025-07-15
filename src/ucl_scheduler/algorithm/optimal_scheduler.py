@@ -5,6 +5,8 @@ Add features incrementally over time.
 
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+
+from ..data_parsing.room_manager import get_parsed_room_data
 from .constrained_scheduler import RehearsalScheduler, RehearsalRequest, SolverStatus
 
 from ..solution_viewing.terminal_viewer import view_schedule
@@ -28,18 +30,40 @@ class TimeOfDayPreferences:
 @dataclass
 class RoomPreferences:
     """Leader's preferences for room usage."""
-    available_rooms: List[str]
-    room_weights: Dict[str, float]  # Preference weights for each room
+    available_rooms = ['Bloomsbury Theatre Conference Room', 'Bloomsbury Theatre Rehearsal Room', 'Bloomsbury Theatre 204', 'Lewis Building Dance Studio', 'Lewis Building 105', 'Lewis Building 206', 'Jeremy Bentham Room', 'Wilkins Building Garden Room', 'Wilkins Terrace', 'IOE 421 Nunn Hall', 'IOE 102 Punnet Hall (Drama Studio)', 'Christopher Ingold Building G21 Ramsay', 'Anatomy Building G04 Gavin De Beer', 'Anatomy Building B15', 'Darwin Building B05', 'Darwin Building B15', 'Foster Court 112/113', 'Foster Court 114', 'Foster Court 215', 'Foster Court 217', 'Foster Court 219', 'South Quad Teaching Block G01', 'South Quad Teaching Block 101', 'South Quad Teaching Block 102', 'South Quad Teaching Block 103', 'Chadwick Building G07', 'Chadwick Building G08', 'Chadwick Building 1.02A/B']
+    room_weights = {
+        'Bloomsbury Theatre Conference Room': 0.90,
+        'Bloomsbury Theatre Rehearsal Room': 0.10,
+        'Bloomsbury Theatre 204': 0.80,
+        'Lewis Building Dance Studio': 0.70,
+        'Lewis Building 105': 0.80,
+        'Lewis Building 206': 0.90,
+        'Jeremy Bentham Room': 0.90,
+        'Wilkins Building Garden Room': 0.70,
+        'Wilkins Terrace': 0.50,
+        'IOE 421 Nunn Hall': 0.30,
+        'IOE 102 Punnet Hall (Drama Studio)': 0.40,
+        'Christopher Ingold Building G21 Ramsay': 0.20,
+        'Anatomy Building G04 Gavin De Beer': 0.0,
+        'Anatomy Building B15': 0.0,
+        'Darwin Building B05': 0.0,
+        'Darwin Building B15': 0.0,
+        'Foster Court 112/113': 0.0,
+        'Foster Court 114': 0.0,
+        'Foster Court 215': 0.0,
+        'Foster Court 217': 0.0,
+        'Foster Court 219': 0.0,
+        'South Quad Teaching Block G01': 0.70,
+        'South Quad Teaching Block 101': 0.50,
+        'South Quad Teaching Block 102': 0.50,
+        'South Quad Teaching Block 103': 0.50,
+        'Chadwick Building G07': 0.60,
+        'Chadwick Building G08': 0.60,
+        'Chadwick Building 1.02A/B': 0.40,
+        'CMISGO': 0.0
+    }  # Preference weights for each room
     
-    def __init__(self):
-        self.available_rooms = []
-        self.room_weights = {}
-    
-    def add_room(self, room_name: str, weight: float = 1.0):
-        """Add a room with its preference weight."""
-        self.available_rooms.append(room_name)
-        self.room_weights[room_name] = weight
-    
+    # Not using as is--later we could use this to normalize the weights to have a max of 1.0 but not needed for now
     def normalize_weights(self):
         """Ensure room weights sum to 1.0."""
         if not self.room_weights:
@@ -61,8 +85,8 @@ class ContinuityPreferences:
 class OptimizationWeights:
     """Weights for different optimization factors."""
     time_preference: float = 0.3
-    room_preference: float = 0.0
-    continuity_preference: float = 0.7
+    room_preference: float = 0.4
+    continuity_preference: float = 0.3
     
     def normalize(self):
         total = self.time_preference + self.room_preference + self.continuity_preference
@@ -125,17 +149,72 @@ class FactorCalculator:
         
         return max(0, total_score)
     
+    def find_best_room(self, day: int, shift: int, rehearsal_length: int) -> Tuple[str, float]:
+        """
+        Find the best room for a given day, shift, and rehearsal length.
+        Shift + rehearsal_length must be less than the length of the day
+        """
+
+        parsed_room_data = get_parsed_room_data()
+        assert parsed_room_data[day].keys() == self.room_prefs.available_rooms # To make sure the room names are consistent
+
+        # Find the best room for the given day, shift, and rehearsal length
+        best_room = None
+        best_score = 0.0 # Defaults to CMISGO essentially
+
+        for room in self.room_prefs.available_rooms:
+            if parsed_room_data[day][room][shift:shift + rehearsal_length] and self.room_prefs.room_weights[room] > best_score:
+                best_room = room
+                best_score = self.room_prefs.room_weights[room]
+        if best_room is None: # No rooms better than CMISGO were found
+            best_room = 'CMISGO'
+
+        return best_room, best_score
+    
+    def assign_rooms(self, schedule) -> List[List[str]]:
+        """Assign rooms to the schedule."""
+        # Assume that multi-hour rehearsals should be assigned to the same room for each hour. 
+        # Multiple requests for the same group are already split to different days so we don't need to worry about that
+        room_assignments = []
+        for day_index, day in enumerate(schedule):
+            day_room_assignments = []
+            for shift_index in range(len(day)): # shift should be a dict with form {'members': List[str], 'leader': str}
+                shift = day[shift_index]
+                if shift and isinstance(shift, dict) and shift.get('members'): # Requires shift.get('members') to be a non-empty list
+
+                    rehearsal_length = 0
+                    while shift_index + rehearsal_length < len(day) and shift == day[shift_index + rehearsal_length]: # If the current shift (i.e. scheduled rehearsal)
+                        rehearsal_length += 1
+                    
+                    room, score = self.find_best_room(day_index, shift_index, rehearsal_length)
+                    day_room_assignments.extend([room] * rehearsal_length) # append room ehearsal_length times
+                    shift_index += rehearsal_length - 1 # -1 because the for loop will increment shift_index by 1
+                else:
+                    day_room_assignments.append('')
+            room_assignments.append(day_room_assignments)
+        return room_assignments
+
+
     def calculate_room_preference_score(self, schedule) -> float:
         """Calculate room preference score (0-100)."""
-        # Placeholder for room preference scoring
-        # This will be implemented when room selection logic is added
+
+        room_assignments = self.assign_rooms(schedule)
+
+        # Calculate the score for the room assignments
+        total_score = 0
+        num_rooms = 0
+        for day_index, day in enumerate(room_assignments):
+            for shift_index, room in enumerate(day):
+                if room:
+                    num_rooms += 1
+                    total_score += self.room_prefs.room_weights[room]
+        
+        score = total_score / num_rooms # The score is the average of the weights of the rooms assigned to the schedule
         
         if not schedule or not self.room_prefs.available_rooms:
             return 50.0  # Neutral score if no rooms configured
         
-        # For now, return a neutral score
-        # TODO: Implement room assignment and scoring logic
-        return 50.0
+        return score * 100 # Normalize to 0-100
 
     def calculate_continuity_score(self, schedule) -> float:
         """Reward longer rehearsal blocks up to a limit, penalize longer blocks."""
@@ -236,7 +315,7 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
         self.optimizer = ScheduleOptimizer(weights, time_prefs, room_prefs, continuity_prefs)
     
     def solve_optimized(self, requests: List[RehearsalRequest], 
-                       num_solutions: int = 200) -> Tuple[List, float, List, SolverStatus]:
+                       num_solutions: int = 200) -> Tuple[List, float, List, SolverStatus, List[List[str]]]:
         """Find and return the best schedule and its score."""
         # Build the model first
         print("Building scheduling model...")
@@ -248,23 +327,24 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
         solutions = self.solutions
         infeasible_requests = self.infeasible_requests
         best_schedule, best_score = self.optimizer.find_best_schedule(solutions)
+        room_assignments = self.optimizer.calculator.assign_rooms(best_schedule)
 
         if status == SolverStatus.INFEASIBLE:
             print("No feasible solutions found")
-            return [], 0.0, [], status
+            return [], 0.0, [], status, []
         elif status == SolverStatus.PARTIALLY_FEASIBLE:
             # Give the infeasibility analysis and the partial solutions
             print("Partially feasible solutions found")
             print(f"Best schedule: {best_schedule}")
             print(f"Best score: {best_score}")
             print(f"Infeasible requests: {infeasible_requests}")
-            return best_schedule, best_score, infeasible_requests, status
+            return best_schedule, best_score, infeasible_requests, status, room_assignments
         elif status == SolverStatus.FEASIBLE:
             # Give the solutions
             print("Feasible solutions found")
             print(f"Best schedule: {best_schedule}")
             print(f"Best score: {best_score}")
-            return best_schedule, best_score, infeasible_requests, status # infeasible_requests is empty
+            return best_schedule, best_score, infeasible_requests, status, room_assignments # infeasible_requests is empty
         else:
             raise ValueError(f"Invalid solver status: {status}")
     
@@ -280,18 +360,17 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
 
 def main():
     """Example usage of the optimization skeleton."""
-    
     print("=== Schedule Optimization Demo ===\n")
-    
+
     # Configure time preferences
     print("Configure time of day preferences:")
     print("1. Morning-focused (9:00-12:00)")
     print("2. Afternoon-focused (12:00-17:00)")
     print("3. Evening-focused (17:00-21:00)")
     print("4. Balanced")
-    
+
     time_choice = input("Enter time preference (1-4): ").strip()
-    
+
     if time_choice == "1":
         time_prefs = TimeOfDayPreferences(morning_weight=0.6, afternoon_weight=0.2, evening_weight=0.2)
         print("Selected: Morning-focused")
@@ -304,31 +383,23 @@ def main():
     else:
         time_prefs = TimeOfDayPreferences(morning_weight=0.33, afternoon_weight=0.34, evening_weight=0.33)
         print("Selected: Balanced")
-    
+
     time_prefs.normalize()
-    
-    # Configure room preferences
-    print("\nConfigure room preferences:")
+
+    # Use default RoomPreferences (no add_room calls)
+    print("\nUsing default room preferences.")
     room_prefs = RoomPreferences()
-    
-    # Add some example rooms (can be customized)
-    room_prefs.add_room("Studio A", 1.0)
-    room_prefs.add_room("Studio B", 0.8)
-    room_prefs.add_room("Rehearsal Room 1", 0.6)
-    room_prefs.add_room("Rehearsal Room 2", 0.6)
-    
-    room_prefs.normalize_weights()
-    
+
     print("Available rooms configured:")
     for room, weight in room_prefs.room_weights.items():
         print(f"  {room}: {weight:.2f}")
-    
+
     # Configure continuity preferences
     print("\nConfigure continuity preferences:")
     max_length = int(input("Maximum preferred consecutive rehearsal slots (e.g. 2): ").strip() or 2)
     penalty = float(input("Penalty factor for exceeding block length (e.g. 2.0): ").strip() or 2.0)
     continuity_prefs = ContinuityPreferences(max_block_length=max_length, penalty_factor=penalty)
-    
+
     # Configure optimization weights
     print("\nChoose optimization focus:")
     print("1. Time-focused")
@@ -348,14 +419,14 @@ def main():
     else:
         weights = OptimizationWeights(time_preference=0.33, room_preference=0.33, continuity_preference=0.34)
         print("Selected: Balanced")
-    
+
     # Get availability data for the scheduler
     from ucl_scheduler.data_parsing.availability_manager import get_parsed_availability, DEFAULT_SPREADSHEET_KEY
     cast_members, leaders, cast_availability, leader_availability = get_parsed_availability(DEFAULT_SPREADSHEET_KEY)
-    
+
     # Create optimized scheduler
     scheduler = OptimizedRehearsalScheduler(weights, time_prefs, room_prefs, continuity_prefs, cast_members, cast_availability, leader_availability)
-    
+
     # Define rehearsal requests
     requests = [
         RehearsalRequest(['Sophia', 'Tumo', 'Sabine'], 1, 'Sophia', 1),
@@ -363,26 +434,30 @@ def main():
         RehearsalRequest(['Cal', 'Charlie'], 1, 'Cal', 3),
         RehearsalRequest(['Sophia', 'Tumo', 'Ollie'], 2, 'Sophia', 4),
     ]
-    
+
     print(f"\nOptimizing schedule for {len(requests)} rehearsal requests...")
-    
+
     # Build model and solve
     scheduler.build_model(requests)
-    best_schedule, best_score, infeasible_requests, status = scheduler.solve_optimized(requests, num_solutions=200)
-    
+    best_schedule, best_score, infeasible_requests, status, room_assignments = scheduler.solve_optimized(requests, num_solutions=200)
+
     if best_schedule:
-        best_solution = best_schedule[0]
+        best_solution = best_schedule[0] if isinstance(best_schedule[0], list) else best_schedule
         analysis = scheduler.analyze_schedule(best_solution)
-        
+
         print(f"\n=== OPTIMIZATION RESULTS ===")
         print(f"Time Preference Score: {analysis['time_preference_score']:.2f}")
         print(f"Room Preference Score: {analysis['room_preference_score']:.2f}")
         print(f"Continuity Score: {analysis['continuity_score']:.2f}")
         print(f"Total Score: {analysis['total_score']:.2f}")
-        
+
         print(f"\n=== SCHEDULE ===")
         # Display the schedule
         view_schedule(best_schedule)
+
+        print(f"\n=== ROOM ASSIGNMENTS ===")
+        for day_idx, day in enumerate(room_assignments):
+            print(f"Day {day_idx+1}: {day}")
     else:
         print("No feasible solution found.")
 

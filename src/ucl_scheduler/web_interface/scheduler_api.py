@@ -107,19 +107,13 @@ def generate_schedule():
         
         print(f"All requested members found in cast data: {list(all_requested_members)}")
         
-        # Create optimization preferences
+        # Create optimization preferences (assume these are already normalized and set in optimal_scheduler)
         time_prefs = TimeOfDayPreferences()
-        time_prefs.normalize()
         
         room_prefs = RoomPreferences()
         continuity_prefs = ContinuityPreferences()
         
-        weights = OptimizationWeights(
-            time_preference=0.6,
-            room_preference=0.2,
-            continuity_preference=0.2
-        )
-        weights.normalize()
+        weights = OptimizationWeights()
         
         # Create optimized scheduler with availability data
         try:
@@ -137,7 +131,7 @@ def generate_schedule():
         # Build and solve the model
         print("Building and solving scheduling problem...")
         try:
-            best_schedule, score, infeasible_requests, status = scheduler.solve_optimized(rehearsal_requests, num_solutions=200)
+            best_schedule, score, infeasible_requests, status, room_assignments = scheduler.solve_optimized(rehearsal_requests, num_solutions=200)
             print("Best schedule and score obtained from solve_optimized.")
         except Exception as e:
             print(f"Error in solve_optimized: {e}")
@@ -166,6 +160,7 @@ def generate_schedule():
                 'score': score,
                 'infeasible_requests': infeasible_requests,
                 'status': status.name.lower(),
+                'room_assignments': room_assignments,
                 'message': f'Schedule generated successfully! Score: {score:.1f}/100'
             })
         elif status == SolverStatus.FEASIBLE:
@@ -174,6 +169,7 @@ def generate_schedule():
                 'schedule': best_schedule,
                 'score': score,
                 'status': status.name.lower(),
+                'room_assignments': room_assignments,
                 'message': f'Schedule generated successfully! Score: {score:.1f}/100'
             })
         else:

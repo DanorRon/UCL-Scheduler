@@ -41,7 +41,7 @@ def parse_spreadsheet_url(url: str) -> str:
     
     return match.group(1)
 
-def get_availability_data(spreadsheet_key: str) -> pd.DataFrame:
+def get_availability_data(spreadsheet_key: str, worksheet_index: int = 0) -> pd.DataFrame:
     """
     Get availability data from Google Sheets.
     
@@ -96,7 +96,7 @@ def get_availability_data(spreadsheet_key: str) -> pd.DataFrame:
     
     # Get worksheet data (assuming first worksheet)
     try:
-        worksheet = spreadsheet.get_worksheet(0)
+        worksheet = spreadsheet.get_worksheet(worksheet_index)
         data = worksheet.get_all_values()
     except Exception as e:
         raise Exception(f"Failed to retrieve data from spreadsheet: {str(e)}")
