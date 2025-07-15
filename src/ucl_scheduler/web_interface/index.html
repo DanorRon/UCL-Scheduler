@@ -727,10 +727,7 @@
                     <button type="button" class="add-btn" onclick="addRequest()" style="display: none;">
                         Add Request
                     </button>
-                    <div style="margin-top: 20px;">
-                        <input type="checkbox" id="show-room-assignments" />
-                        <label for="show-room-assignments">Show room assignments</label>
-                    </div>
+                    <!-- Removed the show room assignments checkbox and label -->
                 </div>
 
                 <button type="submit" class="submit-btn">
@@ -760,7 +757,8 @@
         let leaders = [];
         let fetchTimeout = null;
         let lastProcessedUrl = '';
-        let showRoomAssignments = false;
+        // Removed showRoomAssignments variable and all related logic
+        // TODO Possibly add back in later
         
         // Function to force placeholder color
         function forcePlaceholderColor() {
