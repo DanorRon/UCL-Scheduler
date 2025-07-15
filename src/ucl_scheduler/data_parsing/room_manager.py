@@ -224,7 +224,7 @@ def parse_room_data(worksheet: Dict) -> List[Dict[str, List[bool]]]:
 
     # Split up the data by days and convert to boolean values
     for i in range(len(day_indices)):
-        current_day_data = rooms_df.iloc[day_indices[i]:day_indices[i] + len(room_names) - 1, 5:]
+        current_day_data = rooms_df.iloc[day_indices[i]:day_indices[i] + len(room_names), 5:]
         for j in range(len(current_day_data)):
             for k in range(len(current_day_data.columns)):
                 if current_day_data.iloc[j, k][1] in ["#ffffff", None]: # Replace elements with a room availability flag
@@ -234,12 +234,12 @@ def parse_room_data(worksheet: Dict) -> List[Dict[str, List[bool]]]:
         current_day_data = current_day_data.values.tolist()
 
         hourly_current_day_data = {}
-        for row in current_day_data:
+        for row_index, row in enumerate(current_day_data):
             hourly_row = []
             for index in range(len(row)):
                 if index % 2 == 0: # 1st, 3rd, 5th, etc.
                     hourly_row.append(row[index] and row[index + 1])
-            hourly_current_day_data[room_names[j]] = hourly_row
+            hourly_current_day_data[room_names[row_index]] = hourly_row
         
         parsed_room_data.append(hourly_current_day_data)
     

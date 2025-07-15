@@ -727,6 +727,10 @@
                     <button type="button" class="add-btn" onclick="addRequest()" style="display: none;">
                         Add Request
                     </button>
+                    <div style="margin-top: 20px;">
+                        <input type="checkbox" id="show-room-assignments" />
+                        <label for="show-room-assignments">Show room assignments</label>
+                    </div>
                 </div>
 
                 <button type="submit" class="submit-btn">
@@ -756,6 +760,7 @@
         let leaders = [];
         let fetchTimeout = null;
         let lastProcessedUrl = '';
+        let showRoomAssignments = false;
         
         // Function to force placeholder color
         function forcePlaceholderColor() {
@@ -1235,7 +1240,7 @@
             .then(result => {
                 if (result.success && result.status === "feasible") {
                     showResult(`Schedule generated successfully! Score: ${result.score.toFixed(1)}/100`, 'success');
-                    displaySchedule(result.schedule);
+                    displaySchedule(result.schedule, result.room_assignments);
                     document.getElementById('schedule-display').style.display = 'block';
                 } else if (result.success && result.status === "partially_feasible") {
                     // Build infeasible requests summary for inside the result box (grouped by size, extensible)
@@ -1267,7 +1272,7 @@
                         'partial-success'
                     );
                     document.getElementById('schedule-content').innerHTML = '';
-                    displaySchedule(result.schedule);
+                    displaySchedule(result.schedule, result.room_assignments);
                     document.getElementById('schedule-display').style.display = 'block';
                 } else if (result.status === "infeasible" || !result.success) {
                     showResult(`Error: ${result.error || "No feasible schedule found."}`, 'error');
@@ -1286,7 +1291,7 @@
             resultDiv.className = type;
         }
 
-        function displaySchedule(schedule) {
+        function displaySchedule(schedule, room_assignments) {
             const scheduleContent = document.getElementById('schedule-content');
             scheduleContent.innerHTML = '';
 
@@ -1337,6 +1342,7 @@
                     const membersArr = shiftData && shiftData.members ? shiftData.members.filter(m => m && m.trim()) : [];
                     const leader = shiftData && shiftData.leader ? shiftData.leader : '';
                     const members = membersArr.join(', ');
+                    const room = room_assignments[day][shift];
                     
                     if (members) {
                         // Find how many consecutive shifts have the same members
@@ -1360,6 +1366,9 @@
                             <div style="display: flex; flex-direction: column; height: 100%;">
                                 <div style="font-weight: bold; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">
                                     ${leader}
+                                </div>
+                                <div style="font-weight: bold; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">
+                                    ${room}
                                 </div>
                                 <div style="font-size: 0.9em; color: #4a5568;">
                                     ${otherMembers}

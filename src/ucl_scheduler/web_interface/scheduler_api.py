@@ -164,6 +164,7 @@ def generate_schedule():
                 'message': f'Schedule generated successfully! Score: {score:.1f}/100'
             })
         elif status == SolverStatus.FEASIBLE:
+            print(f"Room assignments: {room_assignments}")
             return jsonify({
                 'success': True,
                 'schedule': best_schedule,

@@ -379,10 +379,11 @@ class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
                         for rehearsal_length in rehearsal_lengths:
                             # Check if this shift is part of a multi-hour rehearsal
                             for start_s in range(max(0, s - rehearsal_length + 1), s + 1):
-                                if self.value(self._multi_request_fulfillment[(request, d, start_s, rehearsal_length)]):
-                                    scheduled_cast = list(request[0])  # Get members from request
-                                    leader = request[1]  # Get leader from request
-                                    break
+                                if start_s + rehearsal_length <= self._data.num_shifts:
+                                    if self.value(self._multi_request_fulfillment[(request, d, start_s, rehearsal_length)]):
+                                        scheduled_cast = list(request[0])  # Get members from request
+                                        leader = request[1]  # Get leader from request
+                                        break
                         if scheduled_cast:
                             break
                 
