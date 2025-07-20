@@ -17,7 +17,6 @@ import itertools
 
 from ortools.sat.python.cp_model import FEASIBLE, OPTIMAL, INFEASIBLE
 
-from ..solution_viewing.html_converter import convert_solutions_to_html
 from ..solution_viewing.terminal_viewer import view_schedule
 
 @dataclass
@@ -624,12 +623,8 @@ def main():
         print("📺 TERMINAL VIEW:")
         print(f"{'-'*50}")
         view_schedule(solutions)
-        
-        html_filename = convert_solutions_to_html(solutions)
-        print(f"\n📄 HTML schedule created: {html_filename}")
-        print("Open this file in your browser to view the beautiful schedule!")
     else:
-        print("\n❌ No solutions found to convert to HTML.")
+        print("\n❌ No solutions found to convert to terminal view.")
 
 
 if __name__ == "__main__":
