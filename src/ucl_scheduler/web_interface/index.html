@@ -695,33 +695,34 @@
                                         Enter the URL of your Google Sheets availability spreadsheet. The spreadsheet should contain cast member names and their availability for each day and time slot.
                                     </div>
                                 </div>
-                                <div style="display: flex; align-items: center; height: 44px;">
-                                    <button type="button" id="search-btn" onclick="searchAvailability()" style="padding: 12px 24px; background: #3182ce; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; height: 44px; min-width: 120px;">
-                                        🔍 Search
-                                    </button>
-                                </div>
                             </div>
                         </div>
                         
-                        <!-- Availability Worksheet Selector -->
-                        <div class="input-group" id="availability-worksheet-selector">
-                            <label>Availability Worksheet</label>
-                            <select id="availability-worksheet-select" class="placeholder-grey">
-                                <option value="" disabled selected hidden>Select a worksheet...</option>
-                            </select>
-                            <div class="availability-help">
-                                Select which worksheet contains your availability data.
+                        <!-- Both Worksheet Selectors -->
+                        <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px;">
+                            <div class="input-group" id="availability-worksheet-selector" style="flex: 1 1 200px; min-width: 180px;">
+                                <label>Availability Worksheet</label>
+                                <select id="availability-worksheet-select" class="placeholder-grey">
+                                    <option value="" disabled selected hidden>Select a worksheet...</option>
+                                </select>
+                                <div class="availability-help">
+                                    Select which worksheet contains your availability data.
+                                </div>
+                            </div>
+                            <div class="input-group" id="room-worksheet-selector" style="flex: 1 1 200px; min-width: 180px;">
+                                <label>Room Worksheet</label>
+                                <select id="room-worksheet-select" class="placeholder-grey">
+                                    <option value="" disabled selected hidden>Select a worksheet...</option>
+                                </select>
+                                <div class="availability-help">
+                                    Select which worksheet contains your room data.
+                                </div>
                             </div>
                         </div>
-                        <!-- Room Worksheet Selector -->
-                        <div class="input-group" id="room-worksheet-selector">
-                            <label>Room Worksheet</label>
-                            <select id="room-worksheet-select" class="placeholder-grey">
-                                <option value="" disabled selected hidden>Select a worksheet...</option>
-                            </select>
-                            <div class="availability-help">
-                                Select which worksheet contains your room data.
-                            </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: -20px; margin-bottom: -5px;">
+                            <button type="button" id="search-btn" onclick="searchAvailability()" style="padding: 12px 36px; background: #3182ce; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; height: 44px; min-width: 120px;">
+                                🔍 Search
+                            </button>
                         </div>
                     </div>
                 </div>
