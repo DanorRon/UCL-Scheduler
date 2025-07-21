@@ -490,17 +490,9 @@
             color: #2a4365;
         }
         
-        .loading::after {
-            content: '';
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #2a4365;
-            border-radius: 50%;
-            border-top-color: transparent;
-            animation: spin 1s linear infinite;
-            margin-left: 8px;
-        }
+
+        
+        
         
         @keyframes spin {
             to { transform: rotate(360deg); }
@@ -659,6 +651,13 @@
             width: 100%;
             overflow-x: auto;
         }
+        input::placeholder {
+            color: #718096 !important;
+            opacity: 1 !important;
+        }
+        select.placeholder-grey {
+            color: #718096 !important;
+        }
     </style>
 </head>
 <body>
@@ -689,9 +688,39 @@
                     <div class="availability-box">
                         <div class="input-group">
                             <label>Availability URL</label>
-                            <input type="url" id="sheets-url" placeholder="https://docs.google.com/spreadsheets/d/..." required>
+                            <div style="display: flex; gap: 10px;">
+                                <div style="flex: 1;">
+                                    <input type="url" id="sheets-url" placeholder="https://docs.google.com/spreadsheets/d/..." required>
+                                    <div class="availability-help">
+                                        Enter the URL of your Google Sheets availability spreadsheet. The spreadsheet should contain cast member names and their availability for each day and time slot.
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; height: 44px;">
+                                    <button type="button" id="search-btn" onclick="searchAvailability()" style="padding: 12px 24px; background: #3182ce; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; height: 44px; min-width: 120px;">
+                                        🔍 Search
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Availability Worksheet Selector -->
+                        <div class="input-group" id="availability-worksheet-selector">
+                            <label>Availability Worksheet</label>
+                            <select id="availability-worksheet-select" class="placeholder-grey">
+                                <option value="" disabled selected hidden>Select a worksheet...</option>
+                            </select>
                             <div class="availability-help">
-                                Enter the URL of your Google Sheets availability spreadsheet. The spreadsheet should contain cast member names and their availability for each day and time slot.
+                                Select which worksheet contains your availability data.
+                            </div>
+                        </div>
+                        <!-- Room Worksheet Selector -->
+                        <div class="input-group" id="room-worksheet-selector">
+                            <label>Room Worksheet</label>
+                            <select id="room-worksheet-select" class="placeholder-grey">
+                                <option value="" disabled selected hidden>Select a worksheet...</option>
+                            </select>
+                            <div class="availability-help">
+                                Select which worksheet contains your room data.
                             </div>
                         </div>
                     </div>
@@ -755,10 +784,7 @@
     <script>
         let castMembers = [];
         let leaders = [];
-        let fetchTimeout = null;
-        let lastProcessedUrl = '';
-        // Removed showRoomAssignments variable and all related logic
-        // TODO Possibly add back in later
+        let savedUrl = ''; // Store the URL that was last successfully processed
         
         // Function to force placeholder color
         function forcePlaceholderColor() {
@@ -768,39 +794,154 @@
             });
         }
 
-        // Debounced function to fetch cast members
-        function debouncedFetchCastMembers(url) {
-            // Clear any existing timeout
-            if (fetchTimeout) {
-                clearTimeout(fetchTimeout);
+        // Function to search for availability data
+        function searchAvailability() {
+            const urlInput = document.getElementById('sheets-url');
+            const url = urlInput.value.trim();
+            
+            if (!url) {
+                alert('Please enter a Google Sheets URL');
+                return; // Do nothing if no URL entered
             }
             
-            // Set a new timeout to fetch after 1 second of no typing
-            fetchTimeout = setTimeout(() => {
-                if (url && url.includes('docs.google.com') && url !== lastProcessedUrl) {
-                    lastProcessedUrl = url;
-                    fetchCastMembers(url);
-                }
-            }, 1000); // Wait 1 second after user stops typing
+            if (!url.includes('docs.google.com')) {
+                alert('Please enter a valid Google Sheets URL');
+                return; // Do nothing if not a valid Google Sheets URL
+            }
+            
+            // Update the saved URL
+            savedUrl = url;
+            // Fetch cast members and refresh Choices.js group dropdowns using the saved URL and selected worksheet
+            const worksheetSelect = document.getElementById('availability-worksheet-select');
+            const selectedWorksheet = worksheetSelect ? worksheetSelect.value : '';
+            fetchCastMembers(savedUrl, selectedWorksheet);
         }
 
-        // Fetch cast members from backend after entering a valid Google Sheets URL
-        document.getElementById('sheets-url').addEventListener('blur', function() {
-            const url = this.value.trim();
-            if (!url) return;
-            if (url !== lastProcessedUrl) {
-                lastProcessedUrl = url;
-                fetchCastMembers(url);
+        // Function to fetch worksheet names
+        function fetchAvailabilityWorksheetNames(sheetsUrl) {
+            // Show loading state for worksheet selector
+            const availabilityWorksheetSelect = document.getElementById('availability-worksheet-select');
+            const availabilityWorksheetSelector = document.getElementById('availability-worksheet-selector');
+            
+            if (!availabilityWorksheetSelect || !availabilityWorksheetSelector) {
+                console.error('Availability worksheet elements not found!');
+                return;
+            }
+            
+            availabilityWorksheetSelect.innerHTML = '<option value="">Loading worksheets...</option>';
+            availabilityWorksheetSelector.style.display = 'block';
+            
+            fetch('/fetch-availability-worksheets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sheets_url: sheetsUrl })
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success && result.worksheets && result.worksheets.length > 0) {
+                    // Preserve the current selection if possible
+                    const currentValue = availabilityWorksheetSelect.value;
+                    availabilityWorksheetSelect.innerHTML = '';
+                    result.worksheets.forEach(availabilityWorksheet => {
+                        const option = document.createElement('option');
+                        option.value = availabilityWorksheet;
+                        option.textContent = availabilityWorksheet;
+                        availabilityWorksheetSelect.appendChild(option);
+                    });
+                    // Always select the first worksheet if there is no valid previous selection
+                    if (currentValue && result.worksheets.includes(currentValue)) {
+                        availabilityWorksheetSelect.value = currentValue;
+                    } else {
+                        availabilityWorksheetSelect.value = result.worksheets[0];
+                    }
+                } else {
+                    availabilityWorksheetSelect.innerHTML = '<option value="">No worksheets found</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching availability worksheets:', error);
+                availabilityWorksheetSelect.innerHTML = '<option value="">Error loading worksheets</option>';
+            });
+        }
+
+        function fetchRoomWorksheetNames() {
+            const roomWorksheetSelect = document.getElementById('room-worksheet-select');
+            const roomWorksheetSelector = document.getElementById('room-worksheet-selector');
+            if (!roomWorksheetSelect || !roomWorksheetSelector) {
+                console.error('Room worksheet elements not found!');
+                return;
+            }
+            roomWorksheetSelect.innerHTML = '<option value="">Loading room worksheets...</option>';
+            roomWorksheetSelector.style.display = 'block';
+            fetch('/fetch-rooms-worksheets', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success && result.worksheets && result.worksheets.length > 0) {
+                    roomWorksheetSelect.innerHTML = '';
+                    result.worksheets.forEach(roomWorksheet => {
+                        const option = document.createElement('option');
+                        option.value = roomWorksheet;
+                        option.textContent = roomWorksheet;
+                        roomWorksheetSelect.appendChild(option);
+                    });
+                    // Select the second worksheet by default if available, otherwise the first
+                    if (result.worksheets.length > 1) {
+                        roomWorksheetSelect.value = result.worksheets[1];
+                    } else {
+                        roomWorksheetSelect.value = result.worksheets[0];
+                    }
+                } else {
+                    roomWorksheetSelect.innerHTML = '<option value="">No room worksheets found</option>';
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching room worksheets:', error);
+                roomWorksheetSelect.innerHTML = '<option value="">Error loading room worksheets</option>';
+            });
+        }
+
+        // Remove display: none from worksheet selectors so they are always visible
+        const availabilityWorksheetSelector = document.getElementById('availability-worksheet-selector');
+        if (availabilityWorksheetSelector) {
+            availabilityWorksheetSelector.style.display = '';
+        }
+        const roomWorksheetSelector = document.getElementById('room-worksheet-selector');
+        if (roomWorksheetSelector) {
+            roomWorksheetSelector.style.display = '';
+        }
+
+        // Reset visual styling when the URL input changes
+        document.getElementById('sheets-url').addEventListener('input', function() {
+            // Reset visual styling when input changes
+            this.style.borderColor = '#e2e8f0';
+            this.style.backgroundColor = '#fafafa';
+            
+            // Remove checkmark if it exists
+            const inputContainer = this.parentNode;
+            const existingCheckmark = inputContainer.querySelector('.success-checkmark');
+            if (existingCheckmark) {
+                existingCheckmark.remove();
             }
         });
 
-        // Debounced fetch when the URL input changes
-        document.getElementById('sheets-url').addEventListener('input', function() {
+        // When clicking away from the URL input, fetch the availability worksheets and populate the worksheet selector
+        document.getElementById('sheets-url').addEventListener('blur', function() {
             const url = this.value.trim();
-            debouncedFetchCastMembers(url);
+            if (url && url.includes('docs.google.com')) {
+                savedUrl = url;
+                fetchAvailabilityWorksheetNames(url);
+            }
         });
 
-        function fetchCastMembers(sheetsUrl) {
+        // Add event listener for availability worksheet selector
+        document.addEventListener('DOMContentLoaded', function() {
+            fetchRoomWorksheetNames();
+        });
+
+        function fetchCastMembers(sheetsUrl, availabilityWorksheetName = '') {
             
             // Show loading state for group members
             document.querySelectorAll('.request-group').forEach(select => {
@@ -857,7 +998,10 @@
             fetch('/fetch-cast-members', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sheets_url: sheetsUrl })
+                body: JSON.stringify({ 
+                    sheets_url: sheetsUrl,
+                    availability_worksheet_name: availabilityWorksheetName 
+                })
             })
             .then(response => {
                 return response.json();
@@ -866,6 +1010,29 @@
                 if (result.success && result.cast_members) {
                     castMembers = result.cast_members;
                     leaders = result.leaders || []; // Use leaders from API, empty array if not provided
+                    
+                    // Save the URL that was successfully processed
+                    savedUrl = sheetsUrl;
+                    
+                    // Show success indicator
+                    const urlInput = document.getElementById('sheets-url');
+                    const inputContainer = urlInput.parentNode;
+                    
+                    // Remove any existing checkmark
+                    const existingCheckmark = inputContainer.querySelector('.success-checkmark');
+                    if (existingCheckmark) {
+                        existingCheckmark.remove();
+                    }
+                    
+                    // Add checkmark to top right corner
+                    const checkmark = document.createElement('div');
+                    checkmark.className = 'success-checkmark';
+                    checkmark.innerHTML = '✓';
+                    checkmark.style.cssText = 'position: absolute; top: 8px; right: 8px; font-size: 18px; color: #38a169; z-index: 10; pointer-events: none; font-weight: bold;';
+                    
+                    // Make container relative for absolute positioning
+                    inputContainer.style.position = 'relative';
+                    inputContainer.appendChild(checkmark);
                     
                     // Show requests container and add button only on success
                     document.getElementById('requests-placeholder').style.display = 'none';
@@ -893,7 +1060,7 @@
                 }
                 
                 // Remove loading class from all selects
-                document.querySelectorAll('.request-group').forEach(select => {
+                document.querySelectorAll('.request-group, .request-leader').forEach(select => {
                     select.classList.remove('loading');
                     
                     // Also remove loading class from Choices.js containers
@@ -1130,13 +1297,9 @@
         }
 
         function addAllMembers(button) {
-            console.log('Add All button clicked');
-            console.log('Cast members:', castMembers);
-            
             // Navigate up to the input-group, then find the select
             const inputGroup = button.closest('.input-group');
             const select = inputGroup.querySelector('.request-group');
-            console.log('Found select:', select);
             
             if (!select) {
                 console.error('Could not find select element');
@@ -1144,7 +1307,6 @@
             }
             
             if (select.choicesInstance) {
-                console.log('Using Choices.js instance');
                 const currentValues = select.choicesInstance.getValue(true).map(item => item.value);
                 const allValues = [...new Set([...currentValues, ...castMembers])];
                 select.choicesInstance.setChoiceByValue(allValues);
@@ -1157,7 +1319,6 @@
                     }
                 }, 100);
             } else {
-                console.log('Using fallback method');
                 // Fallback for when Choices.js isn't initialized yet
                 const currentValues = Array.from(select.selectedOptions).map(opt => opt.value);
                 const allValues = [...new Set([...currentValues, ...castMembers])];
@@ -1166,11 +1327,8 @@
                     const option = document.createElement('option');
                     option.value = member;
                     option.textContent = member;
-                    select.appendChild(option);
-                });
-                // Select all options
-                Array.from(select.options).forEach(option => {
                     option.selected = true;
+                    select.appendChild(option);
                 });
             }
         }
@@ -1179,7 +1337,7 @@
             e.preventDefault();
             
             // Collect form data
-            const sheetsUrl = document.getElementById('sheets-url').value.trim();
+            const sheetsUrl = savedUrl || document.getElementById('sheets-url').value.trim();
             const requests = [];
             
             document.querySelectorAll('.request-item').forEach(item => {
@@ -1216,14 +1374,15 @@
             showResult('Processing your schedule...', 'loading');
 
             // Prepare data for the API
+            const worksheetSelect = document.getElementById('availability-worksheet-select');
+            const availabilityWorksheetName = worksheetSelect ? worksheetSelect.value : '';
+            const roomWorksheetSelect = document.getElementById('room-worksheet-select');
+            const roomWorksheetName = roomWorksheetSelect ? roomWorksheetSelect.value : '';
             const data = {
                 sheets_url: sheetsUrl,
-                requests: requests,
-                preferences: {
-                    morning: 30,
-                    afternoon: 40,
-                    evening: 30
-                }
+                availability_worksheet_name: availabilityWorksheetName,
+                room_worksheet_name: roomWorksheetName,
+                requests: requests
             };
 
             // Call the Flask API
@@ -1285,8 +1444,18 @@
 
         function showResult(message, type) {
             const resultDiv = document.getElementById('result');
-            resultDiv.innerHTML = message;
-            resultDiv.className = type;
+            
+            if (type === 'loading') {
+                resultDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 12px; padding: 16px; background: #bee3f8; border: 1px solid #90cdf4; border-radius: 8px; color: #2a4365;">
+                        <div style="width: 20px; height: 20px; border: 2px solid #2a4365; border-radius: 50%; border-top-color: transparent; animation: spin 1s linear infinite;"></div>
+                        <span style="font-weight: 500;">${message}</span>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = message;
+                resultDiv.className = type;
+            }
         }
 
         function displaySchedule(schedule, room_assignments) {
@@ -1439,6 +1608,31 @@
 
         // Call updateRequestNumbers on page load
         window.addEventListener('DOMContentLoaded', updateRequestNumbers);
+
+        function updatePlaceholderStyle(select) {
+            if (!select.value) {
+                select.classList.add('placeholder-grey');
+            } else {
+                select.classList.remove('placeholder-grey');
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const availabilitySelect = document.getElementById('availability-worksheet-select');
+            const roomSelect = document.getElementById('room-worksheet-select');
+            if (availabilitySelect) {
+                availabilitySelect.addEventListener('change', function() {
+                    updatePlaceholderStyle(this);
+                });
+                updatePlaceholderStyle(availabilitySelect);
+            }
+            if (roomSelect) {
+                roomSelect.addEventListener('change', function() {
+                    updatePlaceholderStyle(this);
+                });
+                updatePlaceholderStyle(roomSelect);
+            }
+        });
     </script>
 </body>
 </html>

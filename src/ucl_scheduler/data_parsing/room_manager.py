@@ -6,105 +6,34 @@ from typing import Dict, List, Tuple, Optional
 
 from .availability_manager import parse_spreadsheet_url
 
-room_spreadsheet_url = "https://docs.google.com/spreadsheets/d/1kVTIMS_t30-R_eOP-qvCxK9HbOpXkOfSicA3Z1oAaHI/edit?gid=652842963#gid=652842963"
-worksheet_index = 1 # Which worksheet on the spreadsheet to use
-
-spreadsheet_key = parse_spreadsheet_url(room_spreadsheet_url)
+rooms_spreadsheet_url = "https://docs.google.com/spreadsheets/d/1kVTIMS_t30-R_eOP-qvCxK9HbOpXkOfSicA3Z1oAaHI/edit?gid=652842963#gid=652842963"
+rooms_spreadsheet_key = parse_spreadsheet_url(rooms_spreadsheet_url)
 
 
-def get_room_data(spreadsheet_key: str, worksheet_index: int = 0) -> Dict:
+# Helper functions
+def is_merged_cell(worksheet: Dict, row: int, col: int) -> bool:
     """
-    Get room data from Google Sheets using Google Sheets API v4.
-    
+    Check if a cell is merged in the worksheet.
     Args:
-        spreadsheet_key: The Google Sheets spreadsheet key
-        worksheet_index: Index of the worksheet to access
-        
+        worksheet: Dictionary from get_room_data (Google Sheets API response)
+        row: 0-indexed row
+        col: 0-indexed column
     Returns:
-        Dictionary containing worksheet data and metadata
-        
-    Raises:
-        FileNotFoundError: If credentials file is not found and environment variable is not set
-        Exception: If data cannot be retrieved from Google Sheets
+        True if the cell is merged, False otherwise
     """
-    import os
-    import json
-    
-    # Get the credentials file path relative to the package
-    package_dir = Path(__file__).parent.parent
-    credentials_path = package_dir / "credentials" / "ucl-scheduler-866343adad65.json"
-    
-    # Try to use credentials file first (for local development)
-    if credentials_path.exists():
-        print("Using credentials file for local development")
-        from google.oauth2.service_account import Credentials
-        from googleapiclient.discovery import build
-        
-        # Set up credentials
-        scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-        credentials = Credentials.from_service_account_file(str(credentials_path), scopes=scopes)
-        
-        # Build the service
-        service = build('sheets', 'v4', credentials=credentials)
-        
-    else:
-        # Fall back to environment variable (for deployment)
-        print("Credentials file not found, checking environment variable")
-        credentials_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
-        
-        if not credentials_json:
-            raise FileNotFoundError(
-                f"Credentials file not found at {credentials_path} and "
-                "GOOGLE_SHEETS_CREDENTIALS environment variable not set"
-            )
-        
-        try:
-            # Parse the JSON credentials from environment variable
-            credentials_dict = json.loads(credentials_json)
-            from google.oauth2.service_account import Credentials
-            from googleapiclient.discovery import build
-            
-            # Set up credentials
-            scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-            credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
-            
-            # Build the service
-            service = build('sheets', 'v4', credentials=credentials)
-            print("Using credentials from environment variable")
-        except json.JSONDecodeError:
-            raise ValueError("Invalid JSON in GOOGLE_SHEETS_CREDENTIALS environment variable")
-        except Exception as e:
-            raise ValueError(f"Failed to create Google Sheets client from environment: {str(e)}")
-    
-    # Get spreadsheet metadata
-    try:
-        spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_key).execute()
-    except Exception as e:
-        raise Exception(f"Failed to open spreadsheet with key {spreadsheet_key}: {str(e)}")
-    
-    # Get worksheet data with formatting
-    try:
-        worksheet_title = spreadsheet['sheets'][worksheet_index]['properties']['title']
-        
-        # Get all data with formatting
-        request = service.spreadsheets().get(
-            spreadsheetId=spreadsheet_key,
-            ranges=[worksheet_title],
-            includeGridData=True
-        )
-        response = request.execute()
-        
-        return {
-            'spreadsheet_id': spreadsheet_key,
-            'worksheet_title': worksheet_title,
-            'worksheet_index': worksheet_index,
-            'service': service,
-            'response': response
-        }
-        
-    except Exception as e:
-        raise Exception(f"Failed to retrieve data from room spreadsheet: {str(e)}")
-
+    response = worksheet['response']
+    # Find the correct sheet (assume first sheet for now)
+    if 'sheets' in response and len(response['sheets']) > 0:
+        sheet = response['sheets'][0]
+        merges = sheet.get('merges', [])
+        for merge in merges:
+            start_row = merge['startRowIndex']
+            end_row = merge['endRowIndex']
+            start_col = merge['startColumnIndex']
+            end_col = merge['endColumnIndex']
+            if start_row <= row < end_row and start_col <= col < end_col:
+                return True
+    return False
 
 def get_worksheet_values_and_colors(worksheet: Dict) -> pd.DataFrame:
     """
@@ -167,36 +96,112 @@ def get_worksheet_values_and_colors(worksheet: Dict) -> pd.DataFrame:
     
     return rooms_df
 
-def is_merged_cell(worksheet: Dict, row: int, col: int) -> bool:
+
+
+def get_rooms_worksheet(rooms_spreadsheet_key: str, worksheet_name: str) -> Dict:
     """
-    Check if a cell is merged in the worksheet.
+    Get room data from Google Sheets using Google Sheets API v4.
+    
     Args:
-        worksheet: Dictionary from get_room_data (Google Sheets API response)
-        row: 0-indexed row
-        col: 0-indexed column
+        rooms_spreadsheet_key: The Google Sheets spreadsheet key
+        worksheet_name: Name of the worksheet to access
+        
     Returns:
-        True if the cell is merged, False otherwise
+        Dictionary containing worksheet data and metadata
+        
+    Raises:
+        FileNotFoundError: If credentials file is not found and environment variable is not set
+        Exception: If data cannot be retrieved from Google Sheets
     """
-    response = worksheet['response']
-    # Find the correct sheet (assume first sheet for now)
-    if 'sheets' in response and len(response['sheets']) > 0:
-        sheet = response['sheets'][0]
-        merges = sheet.get('merges', [])
-        for merge in merges:
-            start_row = merge['startRowIndex']
-            end_row = merge['endRowIndex']
-            start_col = merge['startColumnIndex']
-            end_col = merge['endColumnIndex']
-            if start_row <= row < end_row and start_col <= col < end_col:
-                return True
-    return False
+    import os
+    import json
+    
+    # Get the credentials file path relative to the package
+    package_dir = Path(__file__).parent.parent
+    credentials_path = package_dir / "credentials" / "ucl-scheduler-866343adad65.json"
+    
+    # Try to use credentials file first (for local development)
+    if credentials_path.exists():
+        print("Using credentials file for local development")
+        from google.oauth2.service_account import Credentials
+        from googleapiclient.discovery import build
+        
+        # Set up credentials
+        scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+        credentials = Credentials.from_service_account_file(str(credentials_path), scopes=scopes)
+        
+        # Build the service
+        service = build('sheets', 'v4', credentials=credentials)
+        
+    else:
+        # Fall back to environment variable (for deployment)
+        print("Credentials file not found, checking environment variable")
+        credentials_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
+        
+        if not credentials_json:
+            raise FileNotFoundError(
+                f"Credentials file not found at {credentials_path} and "
+                "GOOGLE_SHEETS_CREDENTIALS environment variable not set"
+            )
+        
+        try:
+            # Parse the JSON credentials from environment variable
+            credentials_dict = json.loads(credentials_json)
+            from google.oauth2.service_account import Credentials
+            from googleapiclient.discovery import build
+            
+            # Set up credentials
+            scopes = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+            credentials = Credentials.from_service_account_info(credentials_dict, scopes=scopes)
+            
+            # Build the service
+            service = build('sheets', 'v4', credentials=credentials)
+            print("Using credentials from environment variable")
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON in GOOGLE_SHEETS_CREDENTIALS environment variable")
+        except Exception as e:
+            raise ValueError(f"Failed to create Google Sheets client from environment: {str(e)}")
+    
+    # Get spreadsheet metadata
+    try:
+        rooms_spreadsheet = service.spreadsheets().get(spreadsheetId=rooms_spreadsheet_key).execute()
+    except Exception as e:
+        raise Exception(f"Failed to open spreadsheet with key {rooms_spreadsheet_key}: {str(e)}")
+    
+    # Get worksheet data with formatting
+    try:
+        worksheet_title = None
+        for sheet in rooms_spreadsheet['sheets']:
+            if sheet['properties']['title'] == worksheet_name:
+                worksheet_title = worksheet_name
+                break
+        if worksheet_title is None:
+            raise ValueError(f"Worksheet with name '{worksheet_name}' not found in rooms spreadsheet.")
+        
+        # Get all data with formatting
+        request = service.spreadsheets().get(
+            spreadsheetId=rooms_spreadsheet_key,
+            ranges=[worksheet_title],
+            includeGridData=True
+        )
+        response = request.execute()
+        
+        return {
+            'spreadsheet_id': rooms_spreadsheet_key,
+            'worksheet_title': worksheet_title,
+            'service': service,
+            'response': response
+        }
+        
+    except Exception as e:
+        raise Exception(f"Failed to retrieve data from room spreadsheet: {str(e)}")
 
-def parse_room_data(worksheet: Dict) -> List[Dict[str, List[bool]]]:
+def parse_room_data(rooms_worksheet: Dict) -> List[Dict[str, List[bool]]]:
     """
-    Parse room data from a worksheet.
+    Parse room data from a worksheet. Note: A worksheet is a single sheet in a spreadsheet.
 
     Args:
-        worksheet: Dictionary containing room data
+        rooms_worksheet: Dictionary containing room data
 
     Returns:
         List of lists of lists of booleans, where the first list is for days, the second list is for rooms, and the third list is for hours
@@ -204,12 +209,12 @@ def parse_room_data(worksheet: Dict) -> List[Dict[str, List[bool]]]:
 
     # None or #ffffff means the room is available
 
-    rooms_df = get_worksheet_values_and_colors(worksheet)
+    rooms_df = get_worksheet_values_and_colors(rooms_worksheet)
 
     # Color all merged cells so they will be marked as unavailable
     for i in range(len(rooms_df)):
         for j in range(len(rooms_df.columns)):
-            if is_merged_cell(worksheet, i, j):
+            if is_merged_cell(rooms_worksheet, i, j):
                 rooms_df.iloc[i, j] = (rooms_df.iloc[i, j][0], "#ff0000")
 
     room_names = [entry[0] for entry in rooms_df.iloc[2:30, 2].tolist()]
@@ -245,8 +250,11 @@ def parse_room_data(worksheet: Dict) -> List[Dict[str, List[bool]]]:
     
     return parsed_room_data
 
-def get_parsed_room_data(spreadsheet_key: str = spreadsheet_key, worksheet_index: int = worksheet_index) -> List[Dict[str, List[bool]]]:
-    room_data = get_room_data(spreadsheet_key, worksheet_index)
+def get_parsed_room_data(rooms_spreadsheet_key: str = rooms_spreadsheet_key, worksheet_name: str = None) -> List[Dict[str, List[bool]]]:
+    if rooms_spreadsheet_key is None:
+        raise ValueError("room_spreadsheet_key is required but not provided")
+    
+    room_data = get_rooms_worksheet(rooms_spreadsheet_key, worksheet_name)
     return parse_room_data(room_data)
 
 # Example usage
@@ -283,6 +291,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error accessing room data: {str(e)}")
     '''
-    room_data = get_room_data(spreadsheet_key, worksheet_index)
-    parsed_room_data = parse_room_data(room_data)
+    parsed_room_data = get_parsed_room_data(rooms_spreadsheet_key, worksheet_name='28.04.25')
     print(parsed_room_data)

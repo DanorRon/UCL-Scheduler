@@ -98,11 +98,11 @@ class OptimizationWeights:
 class FactorCalculator:
     """Calculate scores for different optimization factors."""
     
-    def __init__(self, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences):
+    def __init__(self, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences, rooms_data):
         self.time_prefs = time_prefs
         self.room_prefs = room_prefs
         self.continuity_prefs = continuity_prefs
-        self.parsed_room_data = get_parsed_room_data()
+        self.parsed_room_data = rooms_data
     
     def calculate_time_preference_score(self, schedule) -> float:
         """Calculate time of day preference score (0-100)."""
@@ -274,10 +274,10 @@ class FactorCalculator:
 class ScheduleOptimizer:
     """Optimize schedules based on weighted factors."""
     
-    def __init__(self, weights: OptimizationWeights, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences):
+    def __init__(self, weights: OptimizationWeights, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences, rooms_data):
         self.weights = weights
         self.weights.normalize()
-        self.calculator = FactorCalculator(time_prefs, room_prefs, continuity_prefs)
+        self.calculator = FactorCalculator(time_prefs, room_prefs, continuity_prefs, rooms_data)
     
     def calculate_total_score(self, schedule) -> float:
         """Calculate weighted total score for a schedule."""
@@ -314,7 +314,7 @@ class ScheduleOptimizer:
 class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the constrained scheduler
     """Enhanced scheduler with optimization capabilities."""
     
-    def __init__(self, weights: OptimizationWeights, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences, cast_members, cast_availability, leader_availability):
+    def __init__(self, weights: OptimizationWeights, time_prefs: TimeOfDayPreferences, room_prefs: RoomPreferences, continuity_prefs: ContinuityPreferences, cast_members, cast_availability, leader_availability, rooms_data):
         # Validate that all required data is provided
         if cast_members is None:
             raise ValueError("cast_members is required but not provided")
@@ -322,9 +322,10 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
             raise ValueError("cast_availability is required but not provided")
         if leader_availability is None:
             raise ValueError("leader_availability is required but not provided")
-        
+        if rooms_data is None:
+            raise ValueError("rooms_data is required but not provided")
         super().__init__(cast_members, cast_availability, leader_availability)
-        self.optimizer = ScheduleOptimizer(weights, time_prefs, room_prefs, continuity_prefs)
+        self.optimizer = ScheduleOptimizer(weights, time_prefs, room_prefs, continuity_prefs, rooms_data)
     
     def solve_optimized(self, requests: List[RehearsalRequest], 
                        num_solutions: int = 200) -> Tuple[List, float, List, SolverStatus, List[List[str]]]:

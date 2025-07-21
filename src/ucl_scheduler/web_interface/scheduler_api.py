@@ -20,7 +20,8 @@ from ucl_scheduler.algorithm.optimal_scheduler import (
     ContinuityPreferences
 )
 from ucl_scheduler.algorithm.constrained_scheduler import RehearsalRequest, SolverStatus
-from ucl_scheduler.data_parsing.availability_manager import parse_spreadsheet_url, get_parsed_availability
+from ucl_scheduler.data_parsing.availability_manager import parse_spreadsheet_url, get_parsed_availability, get_worksheet_names
+from ucl_scheduler.data_parsing.room_manager import get_parsed_room_data, rooms_spreadsheet_url
 import json
 from datetime import datetime
 
@@ -36,29 +37,35 @@ def generate_schedule():
         print(f"Received data: {data}")
         
         sheets_url = data.get('sheets_url', '')
+        availability_worksheet_name = data.get('availability_worksheet_name', None)
+        room_worksheet_name = data.get('room_worksheet_name', None)
         requests_data = data.get('requests', [])
-        preferences = data.get('preferences', {})
         
         print(f"Google Sheets URL: {sheets_url}")
+        print(f"Availability worksheet name: {availability_worksheet_name}")
+        print(f"Room worksheet name: {room_worksheet_name}")
         print(f"Requests: {requests_data}")
-        print(f"Preferences: {preferences}")
         
         # Validate input
         if not sheets_url:
             return jsonify({'success': False, 'error': 'Google Sheets URL is required'})
         if not requests_data:
             return jsonify({'success': False, 'error': 'No rehearsal requests provided'})
+        if not availability_worksheet_name:
+            return jsonify({'success': False, 'error': 'Availability worksheet name is required'})
+        if not room_worksheet_name:
+            return jsonify({'success': False, 'error': 'Room worksheet name is required'})
         
-        # Extract spreadsheet key from URL
+        # Extract availability spreadsheet key from URL
         try:
-            spreadsheet_key = parse_spreadsheet_url(sheets_url)
-            print(f"Extracted spreadsheet key: {spreadsheet_key}")
+            availability_spreadsheet_key = parse_spreadsheet_url(sheets_url)
+            print(f"Extracted spreadsheet key: {availability_spreadsheet_key}")
         except ValueError as e:
             return jsonify({'success': False, 'error': f'Invalid Google Sheets URL: {str(e)}'})
         
         # Get availability data from Google Sheets
         try:
-            cast_members, leaders, cast_availability, leader_availability = get_parsed_availability(spreadsheet_key)
+            cast_members, leaders, cast_availability, leader_availability = get_parsed_availability(availability_spreadsheet_key, availability_worksheet_name)
             print(f"Retrieved availability data for {len(cast_members)} members")
             print(f"Found {len(leaders)} leaders")
             print(f"Cast availability shape: {cast_availability.shape}")
@@ -77,6 +84,21 @@ def generate_schedule():
                 return jsonify({'success': False, 'error': f'Credentials file not found: {error_msg}'})
         except Exception as e:
             return jsonify({'success': False, 'error': f'Failed to retrieve availability data: {str(e)}'})
+        
+        # Extract rooms spreadsheet key from URL
+        try:
+            rooms_spreadsheet_key = parse_spreadsheet_url(rooms_spreadsheet_url)
+            print(f"Extracted rooms spreadsheet key: {rooms_spreadsheet_key}")
+        except ValueError as e:
+            return jsonify({'success': False, 'error': f'Invalid Google Sheets URL: {str(e)}'})
+
+        # Get parsed rooms data from Google Sheets
+        try:
+            rooms_data = get_parsed_room_data(rooms_spreadsheet_key, room_worksheet_name)
+            print(f"Room worksheet name: {room_worksheet_name}")
+            print(f"Retrieved rooms data: {rooms_data}")
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Failed to retrieve rooms data: {str(e)}'})
         
         # Convert requests to RehearsalRequest objects
         rehearsal_requests = []
@@ -118,7 +140,7 @@ def generate_schedule():
         # Create optimized scheduler with availability data
         try:
             print(f"Creating scheduler with {len(cast_members)} members, {len(rehearsal_requests)} requests")
-            scheduler = OptimizedRehearsalScheduler(weights, time_prefs, room_prefs, continuity_prefs, cast_members, cast_availability, leader_availability)
+            scheduler = OptimizedRehearsalScheduler(weights, time_prefs, room_prefs, continuity_prefs, cast_members, cast_availability, leader_availability, rooms_data)
             print("Scheduler created successfully")
         except ValueError as e:
             return jsonify({'success': False, 'error': f'Invalid scheduler configuration: {str(e)}'})
@@ -191,6 +213,7 @@ def fetch_cast_members():
     try:
         data = request.get_json()
         sheets_url = data.get('sheets_url', '')
+        availability_worksheet_name = data.get('availability_worksheet_name', None)
         
         if not sheets_url:
             return jsonify({'success': False, 'error': 'Google Sheets URL is required'})
@@ -204,7 +227,7 @@ def fetch_cast_members():
         
         # Get availability data from Google Sheets
         try:
-            cast_members, leaders, cast_availability, leader_availability = get_parsed_availability(spreadsheet_key)
+            cast_members, leaders, cast_availability, leader_availability = get_parsed_availability(spreadsheet_key, availability_worksheet_name)
             print(f"Retrieved cast members: {cast_members}")
             print(f"Retrieved leaders: {leaders}")
             return jsonify({
@@ -217,6 +240,80 @@ def fetch_cast_members():
             
     except Exception as e:
         print(f"Error fetching cast members: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False, 
+            'error': f'An error occurred: {str(e)}'
+        })
+
+# Retrieve the worksheet names from the availability spreadsheet URL.
+@app.route('/fetch-availability-worksheets', methods=['POST'])
+def fetch_availability_worksheet_names():
+    """Fetch worksheet names from the availability spreadsheet URL."""
+    try:
+        data = request.get_json()
+        sheets_url = data.get('sheets_url', '') # This is the URL of the availability spreadsheet.
+        
+        if not sheets_url:
+            return jsonify({'success': False, 'error': 'Google Sheets URL is required'})
+        
+        # Extract spreadsheet key from URL
+        try:
+            availability_spreadsheet_key = parse_spreadsheet_url(sheets_url)
+            print(f"Extracted spreadsheet key for availability worksheets: {availability_spreadsheet_key}")
+        except ValueError as e:
+            return jsonify({'success': False, 'error': f'Invalid Google Sheets URL: {str(e)}'})
+        
+        # Get worksheet names from Google Sheets
+        try:
+            worksheet_names = get_worksheet_names(availability_spreadsheet_key)
+            print(f"Retrieved worksheet names: {worksheet_names}")
+            return jsonify({
+                'success': True,
+                'worksheets': worksheet_names
+            })
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Failed to retrieve worksheet names: {str(e)}'})
+            
+    except Exception as e:
+        print(f"Error fetching worksheets: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False, 
+            'error': f'An error occurred: {str(e)}'
+        })
+
+# Retrieve the worksheet names from the rooms spreadsheet URL.
+@app.route('/fetch-rooms-worksheets', methods=['POST'])
+def fetch_rooms_worksheet_names():
+    """Fetch worksheet names from the rooms spreadsheet URL."""
+    try:
+        # rooms_spreadsheet_url is a global variable in room_manager.py. The URL is hardcoded in the file.
+        if not rooms_spreadsheet_url:
+            return jsonify({'success': False, 'error': 'Google Sheets URL is required'})
+        
+        # Extract spreadsheet key from URL
+        try:
+            rooms_spreadsheet_key = parse_spreadsheet_url(rooms_spreadsheet_url)
+            print(f"Extracted spreadsheet key for rooms worksheets: {rooms_spreadsheet_key}")
+        except ValueError as e:
+            return jsonify({'success': False, 'error': f'Invalid Google Sheets URL: {str(e)}'})
+
+        # Get worksheet names from Google Sheets
+        try:
+            worksheet_names = get_worksheet_names(rooms_spreadsheet_key)
+            print(f"Retrieved worksheet names: {worksheet_names}")
+            return jsonify({
+                'success': True,
+                'worksheets': worksheet_names
+            })
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Failed to retrieve worksheet names: {str(e)}'})
+            
+    except Exception as e:
+        print(f"Error fetching worksheets: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({

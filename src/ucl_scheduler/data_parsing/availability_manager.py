@@ -41,12 +41,76 @@ def parse_spreadsheet_url(url: str) -> str:
     
     return match.group(1)
 
-def get_availability_data(spreadsheet_key: str, worksheet_index: int = 0) -> pd.DataFrame:
+def get_worksheet_names(spreadsheet_key: str) -> List[str]:
+    """
+    Get all worksheet names from a Google Sheets spreadsheet.
+    
+    Args:
+        spreadsheet_key: The Google Sheets spreadsheet key
+        
+    Returns:
+        List of worksheet names
+        
+    Raises:
+        FileNotFoundError: If credentials file is not found and environment variable is not set
+        Exception: If data cannot be retrieved from Google Sheets
+    """
+    import os
+    import json
+    
+    # Get the credentials file path relative to the package
+    package_dir = Path(__file__).parent.parent
+    credentials_path = package_dir / "credentials" / "ucl-scheduler-866343adad65.json"
+    
+    # Try to use credentials file first (for local development)
+    if credentials_path.exists():
+        print("Using credentials file for local development")
+        gc = service_account(filename=credentials_path)
+    else:
+        # Fall back to environment variable (for deployment)
+        print("Credentials file not found, checking environment variable")
+        credentials_json = os.environ.get('GOOGLE_SHEETS_CREDENTIALS')
+        
+        if not credentials_json:
+            raise FileNotFoundError(
+                f"Credentials file not found at {credentials_path} and "
+                "GOOGLE_SHEETS_CREDENTIALS environment variable not set"
+            )
+        
+        try:
+            # Parse the JSON credentials from environment variable
+            credentials_dict = json.loads(credentials_json)
+            from gspread import service_account_from_dict
+            gc = service_account_from_dict(credentials_dict)
+            print("Using credentials from environment variable")
+        except json.JSONDecodeError:
+            raise ValueError("Invalid JSON in GOOGLE_SHEETS_CREDENTIALS environment variable")
+        except Exception as e:
+            raise ValueError(f"Failed to create Google Sheets client from environment: {str(e)}")
+    
+    # Open the spreadsheet by key
+    try:
+        spreadsheet = gc.open_by_key(spreadsheet_key)
+    except Exception as e:
+        raise Exception(f"Failed to open spreadsheet with key {spreadsheet_key}: {str(e)}")
+    
+    # Get all worksheet names
+    try:
+        worksheets = spreadsheet.worksheets()
+        worksheet_names = [worksheet.title for worksheet in worksheets]
+        print(f"Found worksheets: {worksheet_names}")
+        return worksheet_names
+    except Exception as e:
+        raise Exception(f"Failed to get worksheet names: {str(e)}")
+
+def get_availability_data(spreadsheet_key: str, worksheet_name: str = None, worksheet_index: int = 0) -> pd.DataFrame:
     """
     Get availability data from Google Sheets.
     
     Args:
         spreadsheet_key: The Google Sheets spreadsheet key
+        worksheet_name: Name of the worksheet to use (if None, uses worksheet_index)
+        worksheet_index: Index of the worksheet to use (if worksheet_name is None)
         
     Returns:
         pandas DataFrame containing the availability data
@@ -94,9 +158,12 @@ def get_availability_data(spreadsheet_key: str, worksheet_index: int = 0) -> pd.
     except Exception as e:
         raise Exception(f"Failed to open spreadsheet with key {spreadsheet_key}: {str(e)}")
     
-    # Get worksheet data (assuming first worksheet)
+    # Get worksheet data
     try:
-        worksheet = spreadsheet.get_worksheet(worksheet_index)
+        if worksheet_name:
+            worksheet = spreadsheet.worksheet(worksheet_name)
+        else:
+            worksheet = spreadsheet.get_worksheet(worksheet_index)
         data = worksheet.get_all_values()
     except Exception as e:
         raise Exception(f"Failed to retrieve data from spreadsheet: {str(e)}")
@@ -224,12 +291,13 @@ def parse_availability_data(availability_df: pd.DataFrame) -> Tuple[List[str], L
 # Default spreadsheet key for backward compatibility
 DEFAULT_SPREADSHEET_KEY = "1gQgJI0Ar2K9pkKZkmZxzxPTR95355VsVShk5_aMvxIo"
 
-def get_parsed_availability(spreadsheet_key: Optional[str] = None) -> Tuple[List[str], List[str], np.ndarray, np.ndarray]:
+def get_parsed_availability(spreadsheet_key: Optional[str] = None, worksheet_name: str = None) -> Tuple[List[str], List[str], np.ndarray, np.ndarray]:
     """
     Get and parse availability data from Google Sheets.
     
     Args:
         spreadsheet_key: The Google Sheets spreadsheet key. If None, uses default.
+        worksheet_name: Name of the worksheet to use (if None, uses first worksheet)
         
     Returns:
         Tuple of (cast_members, leaders, cast_availability, leader_availability)
@@ -242,7 +310,7 @@ def get_parsed_availability(spreadsheet_key: Optional[str] = None) -> Tuple[List
         raise ValueError("spreadsheet_key is required but not provided")
     
     # Get raw data from Google Sheets
-    availability_df = get_availability_data(spreadsheet_key)
+    availability_df = get_availability_data(spreadsheet_key, worksheet_name)
     
     # Parse the data
     return parse_availability_data(availability_df)
