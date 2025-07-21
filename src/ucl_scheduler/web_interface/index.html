@@ -695,6 +695,9 @@
                                         Enter the URL of your Google Sheets availability spreadsheet. The spreadsheet should contain cast member names and their availability for each day and time slot.
                                     </div>
                                 </div>
+                                <button type="button" id="try-demo-btn" onclick="tryDemo()" style="padding: 12px 36px; background: #3182ce; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; height: 44px; min-width: 120px;">
+                                    Try a Demo!
+                                </button>
                             </div>
                         </div>
                         
@@ -1634,6 +1637,15 @@
                 updatePlaceholderStyle(roomSelect);
             }
         });
+
+        function tryDemo() {
+            const urlInput = document.getElementById('sheets-url');
+            const demoUrl = 'https://docs.google.com/spreadsheets/d/1OKB9w5p9CVYCyx06hfVOWgEzS3qfaO_H0in4588p9w4/edit?usp=sharing';
+            urlInput.value = demoUrl;
+            savedUrl = demoUrl;
+            fetchAvailabilityWorksheetNames(demoUrl);
+            fetchRoomWorksheetNames();
+        }
     </script>
 </body>
 </html>
