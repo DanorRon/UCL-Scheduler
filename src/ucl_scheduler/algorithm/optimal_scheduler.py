@@ -423,7 +423,6 @@ class DragDropUtils:
                                     break # If any member is not available, break out of the loop
                             else:
                                 available_times.append((d, s)) # If all members are available, add the time to the list
-                    print(f"Available times: {available_times}")
 
                     # Find all the possible starting times for the rehearsal, taking into account the length of the rehearsal
                     possible_starting_times = [] # 2D array of all the possible starting times for the rehearsal

@@ -114,7 +114,8 @@ class RequestProcessor:
             else:
                 # Multi-hour request
                 multi_requests[request_key] = [duration]
-        
+        print(f"Single requests: {single_requests}")
+        print(f"Multi requests: {multi_requests}")
         return single_requests, multi_requests
 
 
@@ -238,16 +239,16 @@ class ConstraintBuilder:
                                         self.shifts[(n, d, s + hour)].Not()
                                     )
             
-            # Add leader availability constraints for multi-hour requests
-            for request, rehearsal_lengths in multi_requests.items():
-                leader_index = self.data.member_to_index(request[1])  # Get leader index in cast_members
-                for rehearsal_length in rehearsal_lengths:
-                    for d in self.data.get_all_days():
-                        for s in range(self.data.num_shifts - rehearsal_length + 1):
-                            # Check that the leader is available for all hours of the rehearsal
-                            for hour in range(rehearsal_length):
-                                if self.data.cast_availability[leader_index][d][s + hour] == 0:
-                                    self.model.add(self.multi_request_fulfillment[(request, d, s, rehearsal_length)] == 0)
+        # Add leader availability constraints for multi-hour requests
+        for request, rehearsal_lengths in multi_requests.items():
+            leader_index = self.data.member_to_index(request[1])  # Get leader index in cast_members
+            for rehearsal_length in rehearsal_lengths:
+                for d in self.data.get_all_days():
+                    for s in range(self.data.num_shifts - rehearsal_length + 1):
+                        # Check that the leader is available for all hours of the rehearsal
+                        for hour in range(rehearsal_length):
+                            if self.data.cast_availability[leader_index][d][s + hour] == 0:
+                                self.model.add(self.multi_request_fulfillment[(request, d, s, rehearsal_length)] == 0)
     
     def add_overlap_prevention_constraints(self, multi_requests: Dict[Tuple, List[int]]):
         """Add constraints to prevent overlapping multi-hour rehearsals for the same group."""
@@ -267,7 +268,7 @@ class ConstraintBuilder:
                                         self.multi_request_fulfillment[(request, d, s1, length1)] +
                                         self.multi_request_fulfillment[(request, d, s2, length2)] <= 1
                                     )
-    
+                
     def add_scheduling_constraints(self, single_requests: List[Tuple], multi_requests: Dict[Tuple, List[int]]):
         """Add constraints ensuring people are only scheduled for fulfilled requests."""
         for n in self.data.get_all_cast():
@@ -315,7 +316,8 @@ class ConstraintBuilder:
                     day_fulfilled = []
                     
                     # Check multi-hour requests for this group
-                    for rehearsal_length in rehearsal_lengths:
+                    unique_rehearsal_lengths = list(set(rehearsal_lengths)) # FIXED: Prevent duplicate fulfillment variables for the same request on the same day
+                    for rehearsal_length in unique_rehearsal_lengths:
                         for s in range(self.data.num_shifts - rehearsal_length + 1):
                             day_fulfilled.append(self.multi_request_fulfillment[(group, d, s, rehearsal_length)])
                     
@@ -330,6 +332,27 @@ class ConstraintBuilder:
                     # Ensure no more than one request per day for this group
                     for day_vars in day_fulfillment_vars:
                         self.model.add(day_vars <= 1)
+    
+    # Blanket constraint to prevent any two requests from being fulfilled at the same time?? Or let's try something else
+    def add_mutual_exclusion_constraints(self, single_requests: List[Tuple], multi_requests: Dict[Tuple, List[int]]):
+        """Add constraints to prevent any two requests from being fulfilled at the same time."""
+        # This should prevent the issue where two leaders are scheduled at the same time
+        for d in self.data.get_all_days():
+            for s in self.data.get_all_shifts():
+                all_fulfillment_vars = []
+
+                for request in single_requests:
+                    all_fulfillment_vars.append(self.request_fulfillment[(request, d, s)])
+                
+                for request, rehearsal_lengths in multi_requests.items():
+                    for rehearsal_length in rehearsal_lengths:
+                        # Don't add fulfillment variables that go past the shift range
+                        for start_s in range(max(0, s - rehearsal_length + 1), min(s + 1, self.data.num_shifts - rehearsal_length + 1)):
+                            all_fulfillment_vars.append(self.multi_request_fulfillment[(request, d, start_s, rehearsal_length)])
+                
+                if all_fulfillment_vars:
+                    self.model.add(sum(all_fulfillment_vars) <= 1)
+
 
 
 class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
@@ -385,7 +408,6 @@ class RehearsalSolutionCollector(cp_model.CpSolverSolutionCallback):
                                         break
                         if scheduled_cast:
                             break
-                
                 # Store both members and leader (empty if no rehearsal scheduled)
                 day_schedule.append({
                     'members': scheduled_cast,
@@ -455,6 +477,7 @@ class RehearsalScheduler:
         self.constraint_builder.add_overlap_prevention_constraints(self._multi_requests)
         self.constraint_builder.add_scheduling_constraints(self._single_requests, self._multi_requests)
         self.constraint_builder.add_same_group_different_days_constraints(self._multi_requests)
+        self.constraint_builder.add_mutual_exclusion_constraints(self._single_requests, self._multi_requests)
         
         return self._single_requests, self._multi_requests
     
@@ -552,7 +575,7 @@ class RehearsalScheduler:
         for combination_tuple in itertools.combinations(self._current_requests, curr_iteration):
             combination = list(combination_tuple)
             print(f"Testing combination: {combination}")
-            print(self._test_request_feasibility(combination))
+            print(f"Feasible: {self._test_request_feasibility(combination)}")
             if not self._test_request_feasibility(combination):
                 infeasible_requests_original_index.append([request.index for request in combination])
                 infeasible_requests_curr_index.append([self._current_requests.index(request) for request in combination])
@@ -582,7 +605,6 @@ class RehearsalScheduler:
         constraint_builder = ConstraintBuilder(test_model, data_manager)
         constraint_builder.create_shift_variables()
         constraint_builder.add_availability_constraints()
-
         # Split requests into single and multi-hour
         single_requests, multi_requests = self.request_processor.split_requests(requests)
         constraint_builder.add_single_hour_constraints(single_requests)
@@ -590,6 +612,7 @@ class RehearsalScheduler:
         constraint_builder.add_overlap_prevention_constraints(multi_requests)
         constraint_builder.add_scheduling_constraints(single_requests, multi_requests)
         constraint_builder.add_same_group_different_days_constraints(multi_requests)
+        constraint_builder.add_mutual_exclusion_constraints(single_requests, multi_requests)
 
         # Solve the test model
         test_solver = cp_model.CpSolver()
