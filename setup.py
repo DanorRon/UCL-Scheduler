@@ -14,9 +14,10 @@ setup(
         "pandas>=1.3.0",
         "gspread>=5.0.0",
         "google-auth>=2.0.0",
+        "waitress>=3.0.2"
     ],
     extras_require={
         "web": ["flask>=2.3.0"],
     },
-    python_requires=">=3.8",
+    python_requires=">=3.11",
 ) 

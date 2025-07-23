@@ -15,7 +15,7 @@ An automated availability-based rehearsal scheduler that optimizes rehearsal sch
 This app is configured for Railway deployment. The main entry point is:
 
 ```
-python -m ucl_scheduler.web_interface.app
+python -m app
 ```
 
 ## Requirements
@@ -28,5 +28,5 @@ python -m ucl_scheduler.web_interface.app
 
 1. Install dependencies: `pip install -r requirements.txt`
 2. Set up Google Sheets API credentials
-3. Run: `python -m ucl_scheduler.web_interface.app`
+3. Run: `python -m app`
 4. Visit: `http://localhost:8080`
