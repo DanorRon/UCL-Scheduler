@@ -17,7 +17,14 @@ sys.path.insert(0, str(src_dir))
 
 # Create the main Flask app
 app = Flask(__name__, static_folder='.', static_url_path='')
-CORS(app)  # Allow cross-origin requests
+
+# Load secret key from credentials file
+with open(os.path.join(os.path.dirname(__file__), '../credentials/flask_secret_key.txt'), 'r') as f:
+    app.secret_key = f.read().strip()
+    print(f"Loaded secret key: {app.secret_key}")
+
+CORS(app)  # Allow cross-origin requests for development
+
 
 # Import and register the API routes
 from ucl_scheduler.web_interface.scheduler_api import (
@@ -26,6 +33,9 @@ from ucl_scheduler.web_interface.scheduler_api import (
     fetch_availability_worksheet_names,
     fetch_rooms_worksheet_names,
     health_check,
+    test_session,
+    calculate_alternates,
+    recalculate_rooms
 )
 
 # Register the routes
@@ -34,6 +44,9 @@ app.route('/fetch-cast-members', methods=['POST'])(fetch_cast_members)
 app.route('/fetch-availability-worksheets', methods=['POST'])(fetch_availability_worksheet_names)
 app.route('/fetch-rooms-worksheets', methods=['POST'])(fetch_rooms_worksheet_names)
 app.route('/health', methods=['GET'])(health_check)
+app.route('/test-session', methods=['GET'])(test_session)
+app.route('/calculate-alternates', methods=['POST'])(calculate_alternates)
+app.route('/recalculate-rooms', methods=['POST'])(recalculate_rooms)
 
 @app.route('/')
 def index():

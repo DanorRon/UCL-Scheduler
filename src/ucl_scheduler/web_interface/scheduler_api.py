@@ -3,11 +3,12 @@ Flask API for the UCL Scheduler web interface.
 Integrates the web form with the optimal scheduler.
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 import sys
 import os
 from pathlib import Path
+import numpy as np
 
 # Add the src directory to the path so we can import our scheduler
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -17,18 +18,22 @@ from ucl_scheduler.algorithm.optimal_scheduler import (
     OptimizationWeights, 
     TimeOfDayPreferences, 
     RoomPreferences, 
-    ContinuityPreferences
+    ContinuityPreferences,
+    DragDropUtils,
+    FactorCalculator
 )
-from ucl_scheduler.algorithm.constrained_scheduler import RehearsalRequest, SolverStatus
+from ucl_scheduler.algorithm.constrained_scheduler import RehearsalRequest, SolverStatus, DataManager
 from ucl_scheduler.data_parsing.availability_manager import parse_spreadsheet_url, get_parsed_availability, get_worksheet_names
 from ucl_scheduler.data_parsing.room_manager import get_parsed_room_data, rooms_spreadsheet_url
 import json
 from datetime import datetime
 
-app = Flask(__name__)
-CORS(app)  # Allow cross-origin requests for development
+def test_session():
+    print(f"Session: {session}")
+    session['foo'] = 'bar'
+    return 'Session set!'
 
-@app.route('/generate-schedule', methods=['POST'])
+
 def generate_schedule():
     """Handle schedule generation request from the web interface."""
     try:
@@ -96,7 +101,7 @@ def generate_schedule():
         try:
             rooms_data = get_parsed_room_data(rooms_spreadsheet_key, room_worksheet_name)
             print(f"Room worksheet name: {room_worksheet_name}")
-            print(f"Retrieved rooms data: {rooms_data}")
+            #print(f"Retrieved rooms data: {rooms_data}")
         except Exception as e:
             return jsonify({'success': False, 'error': f'Failed to retrieve rooms data: {str(e)}'})
         
@@ -153,7 +158,12 @@ def generate_schedule():
         # Build and solve the model
         print("Building and solving scheduling problem...")
         try:
-            best_schedule, score, infeasible_requests, status, room_assignments = scheduler.solve_optimized(rehearsal_requests, num_solutions=200)
+            result = scheduler.solve_optimized(rehearsal_requests, num_solutions=200)
+            best_schedule = result['schedule']
+            score = result['score']
+            infeasible_requests = result['infeasible_requests']
+            status = result['status']
+            room_assignments = result['room_assignments']
             print("Best schedule and score obtained from solve_optimized.")
         except Exception as e:
             print(f"Error in solve_optimized: {e}")
@@ -168,7 +178,14 @@ def generate_schedule():
                 'error': 'No schedule returned from solve_optimized.'
             })
         '''
-        
+
+
+        # Save config/data to session so drag_drop_utils can be initialized later
+        session['cast_members'] = cast_members
+        session['cast_availability'] = cast_availability.tolist()
+        session['leader_availability'] = leader_availability.tolist()
+        session['rooms_data'] = rooms_data
+
         if status == SolverStatus.INFEASIBLE:
             return jsonify({
                 'success': False,
@@ -207,7 +224,62 @@ def generate_schedule():
             'error': f'An error occurred: {str(e)}'
         })
 
-@app.route('/fetch-cast-members', methods=['POST'])
+def calculate_alternates():
+    """Calculate alternate schedules for a given schedule."""
+    try:
+        data = request.get_json()
+        schedule = data.get('schedule')
+        
+        # Load config/data from session
+        cast_members = session.get('cast_members')
+        cast_availability = np.array(session.get('cast_availability'))
+        leader_availability = np.array(session.get('leader_availability'))
+        rooms_data = session.get('rooms_data')
+
+        # Reconstruct drag_drop_utils or equivalent
+        drag_drop_utils = DragDropUtils(DataManager(cast_members, cast_availability, leader_availability), FactorCalculator(TimeOfDayPreferences(), RoomPreferences(), ContinuityPreferences(), rooms_data))
+        
+        alternate_schedules = drag_drop_utils.get_alternate_schedules(schedule)
+        import json
+        alternate_schedules_str_keys = {
+            json.dumps(list(k), separators=(',', ':')): [list(pair) for pair in v]
+            for k, v in alternate_schedules.items()
+        }
+        
+        return jsonify({
+            'alternate_schedules': alternate_schedules_str_keys
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Failed to recalculate alternates: {str(e)}'})
+
+def recalculate_rooms():
+    """Recalculate room assignments for a given schedule."""
+    try:
+        data = request.get_json()
+        schedule = data.get('schedule')
+
+
+        # Load config/data from session
+        cast_members = session.get('cast_members')
+        cast_availability = np.array(session.get('cast_availability'))
+        leader_availability = np.array(session.get('leader_availability'))
+        rooms_data = session.get('rooms_data')
+
+
+
+        # Reconstruct drag_drop_utils or equivalent
+        drag_drop_utils = DragDropUtils(DataManager(cast_members, cast_availability, leader_availability), FactorCalculator(TimeOfDayPreferences(), RoomPreferences(), ContinuityPreferences(), rooms_data))
+        room_assignments = drag_drop_utils.factor_calculator.assign_rooms(schedule)
+        return jsonify({
+            'room_assignments': room_assignments
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'Failed to recalculate room assignments: {str(e)}'})
+
 def fetch_cast_members():
     """Fetch cast members from a Google Sheets URL."""
     try:
@@ -248,7 +320,6 @@ def fetch_cast_members():
         })
 
 # Retrieve the worksheet names from the availability spreadsheet URL.
-@app.route('/fetch-availability-worksheets', methods=['POST'])
 def fetch_availability_worksheet_names():
     """Fetch worksheet names from the availability spreadsheet URL."""
     try:
@@ -286,7 +357,6 @@ def fetch_availability_worksheet_names():
         })
 
 # Retrieve the worksheet names from the rooms spreadsheet URL.
-@app.route('/fetch-rooms-worksheets', methods=['POST'])
 def fetch_rooms_worksheet_names():
     """Fetch worksheet names from the rooms spreadsheet URL."""
     try:
@@ -321,7 +391,6 @@ def fetch_rooms_worksheet_names():
             'error': f'An error occurred: {str(e)}'
         })
 
-@app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint."""
     return jsonify({'status': 'healthy', 'message': 'UCL Scheduler API is running'})

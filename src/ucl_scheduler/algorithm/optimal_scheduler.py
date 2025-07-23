@@ -33,7 +33,7 @@ class RoomPreferences:
     available_rooms = ['Bloomsbury Theatre Conference Room', 'Bloomsbury Theatre Rehearsal Room', 'Bloomsbury Theatre 204', 'Lewis Building Dance Studio', 'Lewis Building 105', 'Lewis Building 206', 'Jeremy Bentham Room', 'Wilkins Building Garden Room', 'Wilkins Terrace', 'IOE 421 Nunn Hall', 'IOE 102 Punnet Hall (Drama Studio)', 'Christopher Ingold Building G21 Ramsay', 'Anatomy Building G04 Gavin De Beer', 'Anatomy Building B15', 'Darwin Building B05', 'Darwin Building B15', 'Foster Court 112/113', 'Foster Court 114', 'Foster Court 215', 'Foster Court 217', 'Foster Court 219', 'South Quad Teaching Block G01', 'South Quad Teaching Block 101', 'South Quad Teaching Block 102', 'South Quad Teaching Block 103', 'Chadwick Building G07', 'Chadwick Building G08', 'Chadwick Building 1.02A/B']
     room_weights = {
         'Bloomsbury Theatre Conference Room': 0.90,
-        'Bloomsbury Theatre Rehearsal Room': 0.10,
+        'Bloomsbury Theatre Rehearsal Room': 1.00,
         'Bloomsbury Theatre 204': 0.80,
         'Lewis Building Dance Studio': 0.70,
         'Lewis Building 105': 0.80,
@@ -167,7 +167,8 @@ class FactorCalculator:
         best_score = 0.0 # Defaults to CMISGO essentially
 
         for room in self.room_prefs.available_rooms:
-            if self.parsed_room_data[day][room][shift:shift + rehearsal_length] and self.room_prefs.room_weights[room] > best_score:
+            # Check that the room is available for the entire rehearsal block
+            if all(self.parsed_room_data[day][room][shift:shift + rehearsal_length]) and self.room_prefs.room_weights[room] > best_score:
                 best_room = room
                 best_score = self.room_prefs.room_weights[room]
         if best_room is None: # No rooms better than CMISGO were found
@@ -195,9 +196,7 @@ class FactorCalculator:
                         rehearsal_length += 1
                     room, score = self.find_best_room(day_index, shift_index, rehearsal_length)
                     day_room_assignments.extend([room] * rehearsal_length) # append room rehearsal_length times
-                    print(f"shift_index: {shift_index}")
                     shift_index += rehearsal_length
-                    print(f"shift_index after: {shift_index}")
                 else:
                     day_room_assignments.append('')
                     shift_index += 1
@@ -328,8 +327,8 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
         self.optimizer = ScheduleOptimizer(weights, time_prefs, room_prefs, continuity_prefs, rooms_data)
     
     def solve_optimized(self, requests: List[RehearsalRequest], 
-                       num_solutions: int = 200) -> Tuple[List, float, List, SolverStatus, List[List[str]]]:
-        """Find and return the best schedule and its score."""
+                       num_solutions: int = 200) -> dict:
+        """Find and return the best schedule and its score as a dictionary."""
         # Build the model first
         print("Building scheduling model...")
         self.build_model(requests)
@@ -342,22 +341,33 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
         best_schedule, best_score = self.optimizer.find_best_schedule(solutions)
         room_assignments = self.optimizer.calculator.assign_rooms(best_schedule)
 
+        result = {
+            'schedule': best_schedule,
+            'score': best_score,
+            'infeasible_requests': infeasible_requests,
+            'status': status,
+            'room_assignments': room_assignments,
+        }
+
         if status == SolverStatus.INFEASIBLE:
             print("No feasible solutions found")
-            return [], 0.0, [], status, []
+            result['schedule'] = []
+            result['score'] = 0.0
+            result['infeasible_requests'] = []
+            result['room_assignments'] = []
+            result['alternate_schedules'] = []
+            return result
         elif status == SolverStatus.PARTIALLY_FEASIBLE:
-            # Give the infeasibility analysis and the partial solutions
             print("Partially feasible solutions found")
-            print(f"Best schedule: {best_schedule}")
+            #print(f"Best schedule: {best_schedule}")
             print(f"Best score: {best_score}")
             print(f"Infeasible requests: {infeasible_requests}")
-            return best_schedule, best_score, infeasible_requests, status, room_assignments
+            return result
         elif status == SolverStatus.FEASIBLE:
-            # Give the solutions
             print("Feasible solutions found")
-            print(f"Best schedule: {best_schedule}")
+            #print(f"Best schedule: {best_schedule}")
             print(f"Best score: {best_score}")
-            return best_schedule, best_score, infeasible_requests, status, room_assignments # infeasible_requests is empty
+            return result
         else:
             raise ValueError(f"Invalid solver status: {status}")
     
@@ -369,6 +379,64 @@ class OptimizedRehearsalScheduler(RehearsalScheduler): # inherits from the const
             'continuity_score': self.optimizer.calculator.calculate_continuity_score(schedule),
             'total_score': self.optimizer.calculate_total_score(schedule)
         }
+
+class DragDropUtils:
+    """Utility class for drag-drop operations."""
+
+    def __init__(self, data_manager, factor_calculator):
+        self.data_manager = data_manager
+        self.factor_calculator = factor_calculator
+        self.alternate_schedules = {} # maybe don't need this as an instance variable
+
+    # Once this class is initialized, we can use it to get the alternate schedules for a given schedule
+    # OR to calculate new room assignments for a given schedule using the factor_calculator
+
+    # This method is part of this class to have access to the data_manager, but does not use the solutions architecture
+    def get_alternate_schedules(self, schedule: List[List[Dict]]):
+        """Get the alternate schedules for scheduled rehearsal."""
+        # The output of this method should only be used for the first rehearsal in a merged block of rehearsals
+        self.alternate_schedules = {} # key is a tuple (day, shift), value is a list of tuples (day, shift) that are the possible starting times for the rehearsal
+        
+        # Iterate through to find all the scheduled rehearsals
+        for day_index, day in enumerate(schedule): # has size (num_days, num_shifts)
+            for shift_index, shift in enumerate(day):
+                # shift is a dictionary with the following keys: 'members', 'leader'; empty if no rehearsal is scheduled at this time
+                if shift['members']: # If a rehearsal is scheduled at this time, get all the possible starting times for the rehearsal
+                    members = shift['members']
+                    leader = shift['leader']
+
+                    # Find the post length of the rehearsal: The number of continuous hours scheduled for the group, starting (and including)from the current shift
+                    post_length = 0
+                    for time_index in range(shift_index, len(day)): # From the current index to the end of the day
+                        if day[time_index]['members'] == members and day[time_index]['leader'] == leader:
+                            post_length += 1
+                        else:
+                            break
+
+
+                    # Find all the available times for the scheduled group (without considering length)
+                    available_times = [] # list of all the available times for the scheduled group, each entry is a tuple (day, shift)
+                    for d in range(self.data_manager.num_days):
+                        for s in range(self.data_manager.num_shifts):
+                            for member in shift['members'] + [shift['leader']]: # Leader is included in cast_availability so can be handled together
+                                if self.data_manager.cast_availability[self.data_manager.member_to_index(member)][d][s] == 0:
+                                    break # If any member is not available, break out of the loop
+                            else:
+                                available_times.append((d, s)) # If all members are available, add the time to the list
+                    print(f"Available times: {available_times}")
+
+                    # Find all the possible starting times for the rehearsal, taking into account the length of the rehearsal
+                    possible_starting_times = [] # 2D array of all the possible starting times for the rehearsal
+                    for time in available_times: # time is a tuple (day_index, shift_index)
+                        for length_increment in range(1, post_length):
+                            if (time[0], time[1] + length_increment) not in available_times: # If the index goes beyond the end of the day, it is not a valid starting time
+                                break
+                        else:
+                            possible_starting_times.append((time[0], time[1])) # If all times are valid, add the time to the list
+
+
+                    self.alternate_schedules[(day_index, shift_index)] = possible_starting_times # key is a tuple (day, shift), value is a 2D array of all the possible starting times for the rehearsal
+        return self.alternate_schedules
 
 
 def main():
@@ -452,7 +520,12 @@ def main():
 
     # Build model and solve
     scheduler.build_model(requests)
-    best_schedule, best_score, infeasible_requests, status, room_assignments = scheduler.solve_optimized(requests, num_solutions=200)
+    result = scheduler.solve_optimized(requests, num_solutions=200)
+    best_schedule = result['schedule']
+    best_score = result['score']
+    infeasible_requests = result['infeasible_requests']
+    status = result['status']
+    room_assignments = result['room_assignments']
 
     if best_schedule:
         best_solution = best_schedule[0] if isinstance(best_schedule[0], list) else best_schedule

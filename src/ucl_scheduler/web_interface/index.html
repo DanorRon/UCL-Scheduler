@@ -6,6 +6,7 @@
     <title>Auto Scheduler</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -567,12 +568,22 @@
             font-weight: 500;
             border: 2px solid #38a169;
             position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
         }
         
         .rehearsal-cell .members {
             font-size: 11px;
             line-height: 1.2;
             margin-top: 2px;
+        }
+        
+        .rehearsal-cell > div {
+            text-align: center;
+            width: 100%;
         }
         
         .empty-cell {
@@ -601,6 +612,16 @@
             background: #fff3cd;
             border: 1px solid #ffeeba;
             color: #856404;
+        }
+        
+        .drop-target {
+            background-color: #c6f6d5 !important;
+            transition: background 0.2s;
+        }
+        .empty-cell.drop-target:hover {
+            background-color: #68d391 !important;
+            cursor: pointer;
+            transition: background 0.1s;
         }
         
         @media (max-width: 640px) {
@@ -657,6 +678,72 @@
         }
         select.placeholder-grey {
             color: #5a6473 !important;
+        }
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: 120px repeat(13, 1fr);
+            gap: 2px;
+            background: #e2e8f0;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .schedule-grid-label {
+            background: #f7fafc;
+            font-weight: bold;
+            color: #2d3748;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px 0 0 8px;
+            padding: 8px 0;
+        }
+        .schedule-grid-header {
+            background: #f7fafc;
+            font-weight: bold;
+            color: #2d3748;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 0;
+        }
+        .rehearsal-cell {
+            background: #bee3f8;
+            border-radius: 8px;
+            padding: 8px;
+            min-height: 48px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: grab;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+        }
+        .empty-cell {
+            background: #fff;
+            border-radius: 8px;
+            min-height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #cbd5e0;
+            font-size: 18px;
+        }
+        .drop-target {
+            background-color: #c6f6d5 !important;
+            transition: background 0.2s;
+        }
+        .empty-cell.drop-target:hover {
+            background-color: #68d391 !important;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .valid-drop-target {
+            background-color: #c6f6d5 !important;
+        }
+        .valid-drop-target.valid-drop-target-hover {
+            background-color: #68d391 !important;
         }
     </style>
 </head>
@@ -1401,7 +1488,25 @@
             .then(result => {
                 if (result.success && result.status === "feasible") {
                     showResult(`Schedule generated successfully! Score: ${result.score.toFixed(1)}/100`, 'success');
-                    displaySchedule(result.schedule, result.room_assignments);
+                    // When schedule is first created, fetch alternates
+                    function fetchAndDisplayAlternates(schedule, room_assignments) {
+                        assignBlockIds(schedule); // Assign blockIds here
+                        fetch('/calculate-alternates', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ schedule })
+                        })
+                        .then(response => response.json())
+                        .then(altResult => {
+                            window.alternateSchedules = altResult.alternate_schedules;
+                            displaySchedule(schedule, room_assignments, window.alternateSchedules);
+                        })
+                        .catch(error => {
+                            showResult('Failed to fetch alternate schedules.', 'error');
+                            displaySchedule(schedule, room_assignments, {});
+                        });
+                    }
+                    fetchAndDisplayAlternates(result.schedule, result.room_assignments);
                     document.getElementById('schedule-display').style.display = 'block';
                 } else if (result.success && result.status === "partially_feasible") {
                     // Build infeasible requests summary for inside the result box (grouped by size, extensible)
@@ -1433,7 +1538,7 @@
                         'partial-success'
                     );
                     document.getElementById('schedule-content').innerHTML = '';
-                    displaySchedule(result.schedule, result.room_assignments);
+                    displaySchedule(result.schedule, result.room_assignments, result.alternate_schedules);
                     document.getElementById('schedule-display').style.display = 'block';
                 } else if (result.status === "infeasible" || !result.success) {
                     showResult(`Error: ${result.error || "No feasible schedule found."}`, 'error');
@@ -1462,7 +1567,8 @@
             }
         }
 
-        function displaySchedule(schedule, room_assignments) {
+        function displaySchedule(schedule, room_assignments, alternate_schedules) {
+            window.alternateSchedules = alternate_schedules || {};
             const scheduleContent = document.getElementById('schedule-content');
             scheduleContent.innerHTML = '';
 
@@ -1471,42 +1577,40 @@
                 return;
             }
 
-            const table = document.createElement('table');
-            table.className = 'schedule-table';
-
-            // Header
-            const thead = document.createElement('thead');
-            const headerRow = document.createElement('tr');
             const timeSlots = [
-                'Day', '9:00 - 10:00', '10:00 - 11:00', '11:00 - 12:00', '12:00 - 13:00',
+                '9:00 - 10:00', '10:00 - 11:00', '11:00 - 12:00', '12:00 - 13:00',
                 '13:00 - 14:00', '14:00 - 15:00', '15:00 - 16:00', '16:00 - 17:00',
                 '17:00 - 18:00', '18:00 - 19:00', '19:00 - 20:00', '20:00 - 21:00', '21:00 - 22:00'
             ];
-            timeSlots.forEach(slot => {
-                const th = document.createElement('th');
-                th.innerHTML = slot;
-                th.style.textAlign = 'center';
-                th.style.fontWeight = 'bold';
-                th.style.color = '#2d3748';
-                headerRow.appendChild(th);
-            });
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-
-            // Body
-            const tbody = document.createElement('tbody');
             const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-            for (let day = 0; day < 7; day++) {
-                const row = document.createElement('tr');
-                const dayCell = document.createElement('td');
-                dayCell.innerHTML = dayNames[day];
-                dayCell.style.fontWeight = 'bold';
-                dayCell.style.color = '#2d3748';
-                dayCell.style.textAlign = 'center';
-                dayCell.style.backgroundColor = '#f7fafc';
-                row.appendChild(dayCell);
+            // Create grid container
+            const grid = document.createElement('div');
+            grid.className = 'schedule-grid';
+            grid.style.gridTemplateRows = `repeat(${dayNames.length + 1}, auto)`;
 
+            // Header row
+            grid.appendChild(Object.assign(document.createElement('div'), {
+                className: 'schedule-grid-header',
+                style: 'grid-column: 1 / 2;',
+                textContent: ''
+            }));
+            for (let i = 0; i < timeSlots.length; i++) {
+                grid.appendChild(Object.assign(document.createElement('div'), {
+                    className: 'schedule-grid-header',
+                    style: `grid-column: ${i + 2} / ${i + 3};`,
+                    textContent: timeSlots[i]
+                }));
+            }
+
+            // Rows for each day
+            for (let day = 0; day < 7; day++) {
+                // Day label
+                grid.appendChild(Object.assign(document.createElement('div'), {
+                    className: 'schedule-grid-label',
+                    style: `grid-row: ${day + 2}; grid-column: 1 / 2;`,
+                    textContent: dayNames[day]
+                }));
                 let shift = 0;
                 while (shift < 13) {
                     const shiftData = (schedule[day] && schedule[day][shift]) ? schedule[day][shift] : null;
@@ -1514,7 +1618,6 @@
                     const leader = shiftData && shiftData.leader ? shiftData.leader : '';
                     const members = membersArr.join(', ');
                     const room = room_assignments[day][shift];
-                    
                     if (members) {
                         // Find how many consecutive shifts have the same members
                         let colspan = 1;
@@ -1522,49 +1625,197 @@
                             shift + colspan < 13 &&
                             schedule[day][shift + colspan] &&
                             schedule[day][shift + colspan].members &&
-                            schedule[day][shift + colspan].members.filter(m => m && m.trim()).join(', ') === members
+                            schedule[day][shift + colspan].members.filter(m => m && m.trim()).join(', ') === members &&
+                            schedule[day][shift + colspan].leader === leader &&
+                            schedule[day][shift + colspan].blockId === shiftData.blockId
                         ) {
                             colspan++;
                         }
-                        const cell = document.createElement('td');
+                        const cell = document.createElement('div');
                         cell.className = 'rehearsal-cell';
-                        cell.colSpan = colspan;
-                        
+                        cell.style.gridColumn = `${shift + 2} / ${shift + 2 + colspan}`;
+                        cell.style.gridRow = `${day + 2}`;
+                        cell.setAttribute('data-day', day);
+                        cell.setAttribute('data-shift', shift);
+                        cell.setAttribute('data-colspan', colspan);
                         // Create two-row layout: leader on top, members below
                         const otherMembers = membersArr.filter(m => m !== leader).join(', ');
-                        
                         cell.innerHTML = `
-                            <div style="display: flex; flex-direction: column; height: 100%;">
-                                <div style="font-weight: bold; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">
-                                    ${leader}
-                                </div>
-                                <div style="font-weight: bold; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">
-                                    ${room}
-                                </div>
-                                <div style="font-size: 0.9em; color: #4a5568;">
-                                    ${otherMembers}
-                                </div>
-                            </div>
+                            <div style="font-weight: bold; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">${leader}</div>
+                            <div style="font-weight: bold; color: #2d3748; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 4px;">${room}</div>
+                            <div style="font-size: 0.9em; color: #4a5568;">${otherMembers}</div>
                         `;
-                        row.appendChild(cell);
+                        grid.appendChild(cell);
                         shift += colspan;
                     } else {
-                        // Do not merge empty cells; always render a single cell
-                        const cell = document.createElement('td');
+                        const cell = document.createElement('div');
                         cell.className = 'empty-cell';
+                        cell.style.gridColumn = `${shift + 2}`;
+                        cell.style.gridRow = `${day + 2}`;
+                        cell.setAttribute('data-day', day);
+                        cell.setAttribute('data-shift', shift);
                         cell.textContent = '—';
-                        row.appendChild(cell);
+                        grid.appendChild(cell);
                         shift += 1;
                     }
                 }
-                tbody.appendChild(row);
             }
-            table.appendChild(tbody);
-            // Wrap the table in a scrollable div for responsiveness
-            const wrapper = document.createElement('div');
-            wrapper.className = 'schedule-table-wrapper';
-            wrapper.appendChild(table);
-            scheduleContent.appendChild(wrapper);
+            scheduleContent.appendChild(grid);
+
+            // Native HTML5 drag-and-drop for the grid (clean, minimal, clear)
+            let dragSource = null;
+            let validDropCells = [];
+
+            // Make rehearsal cells draggable
+            grid.querySelectorAll('.rehearsal-cell').forEach(cell => {
+                cell.setAttribute('draggable', 'true');
+                cell.addEventListener('dragstart', function (e) {
+                    dragSource = {
+                        day: parseInt(cell.getAttribute('data-day')),
+                        shift: parseInt(cell.getAttribute('data-shift')),
+                        colspan: parseInt(cell.getAttribute('data-colspan')) || 1
+                    };
+                    e.dataTransfer.effectAllowed = 'move';
+                    // Highlight valid drop targets
+                    validDropCells = [];
+                    const key = JSON.stringify([dragSource.day, dragSource.shift]);
+                    const allowedTargets = (window.alternateSchedules && window.alternateSchedules[key]) || [];
+                    console.log('Drag start:', { key, allowedTargets, alternateSchedules: window.alternateSchedules });
+                    grid.querySelectorAll('.empty-cell').forEach(emptyCell => {
+                        const toDay = parseInt(emptyCell.getAttribute('data-day'));
+                        const toShift = parseInt(emptyCell.getAttribute('data-shift'));
+                        const isAllowed = allowedTargets.some(([d, s]) => d === toDay && s === toShift);
+                        if (isAllowed) {
+                            emptyCell.classList.add('valid-drop-target');
+                            validDropCells.push(emptyCell);
+                        }
+                    });
+                });
+                cell.addEventListener('dragend', function (e) {
+                    // Remove highlight from all drop targets
+                    validDropCells.forEach(cell => cell.classList.remove('valid-drop-target'));
+                    validDropCells = [];
+                    dragSource = null;
+                });
+
+                // Double-click to split merged cell at the exact subcell clicked
+                cell.addEventListener('dblclick', function (e) {
+                    const day = parseInt(cell.getAttribute('data-day'));
+                    const shift = parseInt(cell.getAttribute('data-shift'));
+                    const colspan = parseInt(cell.getAttribute('data-colspan')) || 1;
+                    const rect = cell.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const subcellWidth = rect.width / colspan;
+                    let clickedIndex = Math.floor(x / subcellWidth);
+                    console.log('dblclick', {day, shift, colspan, clickedIndex});
+                    if (colspan <= 1) return; // No merge to split
+                    if (clickedIndex >= colspan - 1) return;
+                    const splitAt = shift + clickedIndex + 1;
+                    const rehearsalData = schedule[day][shift];
+                    // Assign a new blockId to the right part
+                    if (!window.nextBlockId) window.nextBlockId = 1;
+                    const newBlockId = window.nextBlockId++;
+                    for (let s = splitAt; s < shift + colspan; s++) {
+                        schedule[day][s] = {
+                            ...JSON.parse(JSON.stringify(rehearsalData)),
+                            blockId: newBlockId
+                        };
+                        room_assignments[day][s] = room_assignments[day][shift];
+                    }
+                    // Now, break the merge by making the right part a separate block
+                    // This is achieved by the rendering logic, since the right part is now a new block
+                    displaySchedule(schedule, room_assignments, window.alternateSchedules);
+                });
+            });
+
+            // Make empty cells drop targets
+            grid.querySelectorAll('.empty-cell').forEach(cell => {
+                cell.addEventListener('dragover', function (e) {
+                    if (!dragSource) return;
+                    const toDay = parseInt(cell.getAttribute('data-day'));
+                    const toShift = parseInt(cell.getAttribute('data-shift'));
+                    const key = JSON.stringify([dragSource.day, dragSource.shift]);
+                    const allowedTargets = (window.alternateSchedules && window.alternateSchedules[key]) || [];
+                    const isAllowed = allowedTargets.some(([d, s]) => d === toDay && s === toShift);
+                    if (!isAllowed) return;
+                    e.preventDefault(); // Allow drop
+                    cell.classList.add('drop-target');
+                    cell.classList.add('valid-drop-target-hover');
+                });
+                cell.addEventListener('dragleave', function () {
+                    cell.classList.remove('drop-target');
+                    cell.classList.remove('valid-drop-target-hover');
+                });
+                cell.addEventListener('drop', function (e) {
+                    e.preventDefault();
+                    cell.classList.remove('drop-target');
+                    cell.classList.remove('valid-drop-target-hover');
+                    if (!dragSource) return;
+                    const toDay = parseInt(cell.getAttribute('data-day'));
+                    const toShift = parseInt(cell.getAttribute('data-shift'));
+                    const key = JSON.stringify([dragSource.day, dragSource.shift]);
+                    const allowedTargets = (window.alternateSchedules && window.alternateSchedules[key]) || [];
+                    const isAllowed = allowedTargets.some(([d, s]) => d === toDay && s === toShift);
+                    if (!isAllowed) {
+                        dragSource = null;
+                        return;
+                    }
+                    const colspan = dragSource.colspan;
+                    // Validate target slots (keep this check for safety)
+                    let canDrop = true;
+                    for (let i = 0; i < colspan; i++) {
+                        if (
+                            (schedule[toDay][toShift + i] && schedule[toDay][toShift + i].members && schedule[toDay][toShift + i].members.length > 0) ||
+                            (typeof schedule[toDay][toShift + i] === 'undefined')
+                        ) {
+                            canDrop = false;
+                            break;
+                        }
+                    }
+                    if (!canDrop) {
+                        console.log('Cannot drop here: not enough empty slots.'); // This happens when the drop target is valid but another rehearsal is blocking the drop
+                        dragSource = null;
+                        return;
+                    }
+                    // Move rehearsal
+                    const rehearsalData = JSON.parse(JSON.stringify(schedule[dragSource.day][dragSource.shift]));
+                    const rehearsalRoom = room_assignments[dragSource.day][dragSource.shift];
+                    for (let i = 0; i < colspan; i++) {
+                        schedule[dragSource.day][dragSource.shift + i] = { members: [], leader: null }; // Unscheduled slots are empty dictionaries
+                        room_assignments[dragSource.day][dragSource.shift + i] = '';
+                    }
+                    for (let i = 0; i < colspan; i++) {
+                        schedule[toDay][toShift + i] = JSON.parse(JSON.stringify(rehearsalData));
+                        room_assignments[toDay][toShift + i] = rehearsalRoom;
+                    }
+                    dragSource = null;
+                    // Recalculate room assignments, then alternates, then update UI
+                    fetch('/recalculate-rooms', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ schedule })
+                    })
+                    .then(response => response.json())
+                    .then(roomResult => {
+                        room_assignments = roomResult.room_assignments;
+                        // Now recalculate alternates
+                        return fetch('/calculate-alternates', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ schedule })
+                        });
+                    })
+                    .then(response => response.json())
+                    .then(altResult => {
+                        window.alternateSchedules = altResult.alternate_schedules;
+                        displaySchedule(schedule, room_assignments, window.alternateSchedules);
+                    })
+                    .catch(error => {
+                        showResult('Failed to recalculate room assignments or alternates.', 'error');
+                        displaySchedule(schedule, room_assignments, window.alternateSchedules);
+                    });
+                });
+            });
         }
 
         function downloadSchedule() {
@@ -1646,6 +1897,41 @@
             fetchAvailabilityWorksheetNames(demoUrl);
             fetchRoomWorksheetNames();
         }
+
+        // Assign blockIds to all initial blocks when the schedule is first loaded
+        function assignBlockIds(schedule) {
+            if (!window.nextBlockId) window.nextBlockId = 1;
+            for (let day = 0; day < schedule.length; day++) {
+                let prevBlockId = null;
+                for (let shift = 0; shift < schedule[day].length; ) {
+                    const shiftData = schedule[day][shift];
+                    if (shiftData && shiftData.members && shiftData.members.length > 0) {
+                        // Start of a block
+                        const blockId = window.nextBlockId++;
+                        let len = 1;
+                        // Find block length
+                        while (
+                            shift + len < schedule[day].length &&
+                            schedule[day][shift + len] &&
+                            schedule[day][shift + len].members &&
+                            schedule[day][shift + len].members.filter(m => m && m.trim()).join(', ') === shiftData.members.filter(m => m && m.trim()).join(', ') &&
+                            schedule[day][shift + len].leader === shiftData.leader
+                        ) {
+                            len++;
+                        }
+                        // Assign blockId to all cells in the block
+                        for (let s = shift; s < shift + len; s++) {
+                            schedule[day][s].blockId = blockId;
+                        }
+                        shift += len;
+                    } else {
+                        shift++;
+                    }
+                }
+            }
+        }
+
+        // Note: The backend does not know about blockId. When sending the schedule back to the backend, blockId will be ignored. This is fine as long as blockId is only used for frontend merging/splitting logic.
     </script>
 </body>
 </html>

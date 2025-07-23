@@ -79,7 +79,7 @@ class DataManager:
         """Get range of all day indices."""
         return range(self.num_days)
 
-
+        
 class RequestProcessor:
     """Processes and categorizes rehearsal requests."""
     
@@ -424,7 +424,8 @@ class RehearsalScheduler:
         self.solutions = []
         self.infeasible_requests = []
         self.status = SolverStatus.DEFAULT
-        
+    
+
     def build_model(self, requests: List[RehearsalRequest], is_rebuild: bool = False):
         """Build the complete scheduling model with all constraints."""
 
