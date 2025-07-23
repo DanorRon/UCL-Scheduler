@@ -15,6 +15,8 @@ sys.path.insert(0, str(src_path))
 import ucl_scheduler.web_interface.app as web_app
 app = web_app.app
 
+
+# This is only run when this file is run directly
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False) 

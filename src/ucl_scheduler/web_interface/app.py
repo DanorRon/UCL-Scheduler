@@ -16,7 +16,11 @@ src_dir = current_dir.parent.parent  # Go up from web_interface to src
 sys.path.insert(0, str(src_dir))
 
 # Create the main Flask app
-app = Flask(__name__, static_folder='.', static_url_path='')
+# Set the static folder to the current folder so index.html is found wherever the start point for the program is
+app = Flask(__name__, 
+           template_folder=str(current_dir / 'templates'),
+           static_folder=str(current_dir / 'static'))
+
 
 # Load secret key from credentials file
 # Get the credentials file path relative to the package
@@ -74,6 +78,7 @@ def serve_static(filename):
     static_dir = Path(__file__).parent
     return send_from_directory(static_dir, filename)
 
+# This is only run when this file is run directly
 if __name__ == '__main__':
     # Get port from environment variable (Railway sets this)
     port = int(os.environ.get('PORT', 8080))
