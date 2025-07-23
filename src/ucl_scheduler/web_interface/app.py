@@ -19,11 +19,25 @@ sys.path.insert(0, str(src_dir))
 app = Flask(__name__, static_folder='.', static_url_path='')
 
 # Load secret key from credentials file
-with open(os.path.join(os.path.dirname(__file__), '../credentials/flask_secret_key.txt'), 'r') as f:
-    app.secret_key = f.read().strip()
-    print(f"Loaded secret key: {app.secret_key}")
+# Get the credentials file path relative to the package
+package_dir = Path(__file__).parent.parent
+secret_key_path = package_dir / "credentials" / "flask_secret_key.txt"
 
-CORS(app)  # Allow cross-origin requests for development
+if secret_key_path.exists():
+    print("Using secret key from credentials file")
+    with open(secret_key_path, 'r') as f:
+        app.secret_key = f.read().strip()
+else:
+    # Fall back to environment variable (for deployment)
+    print("Secret key file not found, checking environment variable")
+    secret_key = os.environ.get('FLASK_SECRET_KEY')
+
+    if not secret_key:
+        raise ValueError("FLASK_SECRET_KEY environment variable not set")
+    app.secret_key = secret_key
+
+
+CORS(app, origins=['http://localhost:8080', 'https://web-production-38d52.up.railway.app/'])  # Allow cross-origin requests for development
 
 
 # Import and register the API routes
